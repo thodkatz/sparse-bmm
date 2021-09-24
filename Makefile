@@ -3,11 +3,12 @@ CCMPI:=mpic++
 CXXFLAGS:=-O3 -pedantic -Wall
 
 SRC:=src/*.cpp
+INC:=inc
 
 $(shell mkdir -p bin)
 
 serial: $(SRC)
-	$(CXX) $(CXXFLAGS) -DSERIAL $^ -o bin/$@
+	$(CXX) $(CXXFLAGS) -DSERIAL $^ -I$(INC) -o bin/$@
 
 mpi: $(SRC)
 	$(MPICC) $(CXXFLAGS) -DMPI $^ -o bin/$@

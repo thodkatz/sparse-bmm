@@ -1,9 +1,18 @@
 #!/usr/bin/bash
 
-# to be compatible with the matrix market reading of the C++ program we assume that symmetric is general
+if [ $# -ne 1 ]
+then
+    echo "Set your project path: \$PROJECT=~/my/project/"
+    echo "Usage: ./validation.sh <filename.mtx>"
+    exit
+fi;
+
 PROJECT=~/repos/sparse-bmm
 FILE=$PROJECT/$1
+echo "Project path: $PROJECT"
+echo "Full file path: $FILE"
 
+# to be compatible with the matrix market reading of the C++ program we assume that symmetric is general
 sed -i '/symmetric/ s//general/g' $FILE
 
 figlet Build | lolcat
@@ -14,3 +23,5 @@ figlet Run | lolcat
 
 figlet Validation | lolcat
 cd test/ && python spgemm.py $FILE
+
+rm $PROJECT/test/csrMul.txt

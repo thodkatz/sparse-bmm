@@ -1,6 +1,8 @@
-#pragma once
+#ifndef UTILS_HPP
+#define UTILS_HPP
 
 #include <iostream>
+#include "sparsetools.hpp"
 
 template <class T>
 void printVector(std::vector<T>& arr, std::string formatter)
@@ -10,7 +12,7 @@ void printVector(std::vector<T>& arr, std::string formatter)
         std::cout << i << formatter;
     }
     std::cout << std::endl;
-}
+};
 
 template <class T>
 void printCoo(std::vector<T>& rows, std::vector<T>& cols)
@@ -23,4 +25,9 @@ void printCoo(std::vector<T>& rows, std::vector<T>& cols)
         std::cout << rows[i] << " " << cols[i] << std::endl;
     }
     std::cout << std::endl;
-}
+};
+
+
+void csxWriteFile(CSX& csr, std::string filename);
+
+#endif
