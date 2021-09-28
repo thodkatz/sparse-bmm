@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <vector>
+#include <cmath>
 #include "mmio.hpp"
 #include "utils.hpp"
 
@@ -157,10 +158,12 @@ void coo2csc(const MatrixInfo& arr,
 }
 
 /**
- * Convert csr to its blocked version
- * TODO: Explain the blocking
+ * Convert csr to its blocked version (padding version)
+ *
+ * In order to know the order of blocks we keep all of them including the zero ones padding the pointer array with the
+ * count of nnz elements
  */
-void csr2bcsr(MatrixInfo& arr, const CSX& csr, CSX& bcsr)
+void csr2bcsrPad(MatrixInfo& arr, const CSX& csr, CSX& bcsr)
 {
     const uint32_t& nRow       = arr.nRow;
     const uint32_t& nCol       = arr.nCol;
@@ -170,18 +173,18 @@ void csr2bcsr(MatrixInfo& arr, const CSX& csr, CSX& bcsr)
     uint32_t& numBlockX        = arr.numBlockX;
     uint32_t& numBlockY        = arr.numBlockY;
 
-    const std::vector<uint32_t>& csrRow  = csr.pointer;
-    const std::vector<uint32_t>& csrCol  = csr.indices;
-    std::vector<uint32_t>& bcsrRow = bcsr.pointer;
-    std::vector<uint32_t>& bcsrCol = bcsr.indices;
+    const std::vector<uint32_t>& csrRow = csr.pointer;
+    const std::vector<uint32_t>& csrCol = csr.indices;
+    std::vector<uint32_t>& bcsrRow      = bcsr.pointer;
+    std::vector<uint32_t>& bcsrCol      = bcsr.indices;
 
     if (nCol / blockSizeX == 0 || nRow / blockSizeY == 0) {
         std::cout << "Block dimensions exceed the matrix dimensions" << std::endl;
         exit(-1);
     }
-    numBlockX            = (nCol % blockSizeX != 0) ? nCol / blockSizeX + 1 : nCol / blockSizeX;
-    numBlockY            = (nRow % blockSizeY != 0) ? nRow / blockSizeY + 1 : nRow / blockSizeY;
-    uint32_t totalBlocks = numBlockX * numBlockY;
+    numBlockX            = std::ceil(nCol / blockSizeX);
+    numBlockY            = std::ceil(nRow / blockSizeY);
+    uint32_t totalBlocks = numBlockX * numBlockY; // this will overflow if blockSize too small TODO prevent happening
 
     bcsrRow.resize(totalBlocks * blockSizeY + 1);
     bcsrCol.resize(nnz);
@@ -216,10 +219,9 @@ void csr2bcsr(MatrixInfo& arr, const CSX& csr, CSX& bcsr)
 }
 
 /**
- * Convert csr to its blocked version
- * TODO: Explain the blocking
+ * Convert csc to its blocked version
  */
-void csc2bcsc(const MatrixInfo& arr, const CSX& csc, CSX& bcsc)
+void csc2bcscPad(const MatrixInfo& arr, const CSX& csc, CSX& bcsc)
 {
     MatrixInfo swapArr;
     swapArr.nRow       = arr.nCol;
@@ -230,8 +232,18 @@ void csc2bcsc(const MatrixInfo& arr, const CSX& csc, CSX& bcsc)
     swapArr.numBlockX  = arr.numBlockY;
     swapArr.numBlockY  = arr.numBlockX;
 
-    csr2bcsr(swapArr, csc, bcsc);
+    csr2bcsrPad(swapArr, csc, bcsc);
 }
+
+/**
+ * Convert csr to blocking csr (no padding version)
+ *
+ * In order to not include the zero blocks, we need to know the order of the blocks and how many of the non zero ones
+ * exist per blockX and blockY. So we will add 2 new arrays to the csr structure. One with the size of numBlocksY that
+ * will count the number of blockX per blockY and another one with the ids of the blocks. The last 2 arrays will be the
+ * pointer and the nnz of each block similar to a simple csr structure.
+ */
+void csr2bcsr(MatrixInfo& arr, const CSX& csr, CSX& bcsr) {}
 
 /**
  * Convert bcsr or bcsc to its non-blocked version

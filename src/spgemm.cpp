@@ -1,19 +1,22 @@
 #include "sparsetools.hpp"
+#include <array>
 
-CSX csxMul(CSX& csr, CSX& csc)
+CSX csxMul(const CSX& csr, const CSX& csc)
 {
     CSX mulResult;
     mulResult.n = csr.n;
-    uint32_t n = csr.n-1;
-
+    mulResult.pointer.resize(mulResult.n);
     mulResult.pointer.push_back(0);
-    for (uint32_t i = 0, idxCol = 0, idxRow = 0; i < n; i++) {
-        for (uint32_t j = 0; j < n; j++) {
+
+    uint32_t rows = csr.n-1;
+    for (uint32_t i = 0, idxCol = 0, idxRow = 0; i < rows; i++) {
+        for (uint32_t j = 0; j < rows; j++) {
             idxCol = csr.pointer[i];
             idxRow = csc.pointer[j];
             if (idxCol == csr.pointer[i + 1]) {
                 break;
             }
+
             // find common elements row ith and column ith (sorted)
             while (idxCol < csr.pointer[i + 1] && idxRow < csc.pointer[j + 1]) {
                 if (csr.indices[idxCol] == csc.indices[idxRow]) {
@@ -29,7 +32,7 @@ CSX csxMul(CSX& csr, CSX& csc)
                 }
             }
         }
-        mulResult.pointer.push_back(mulResult.nnz);
+        mulResult.pointer[i+1] = mulResult.nnz;
     }
 
     return mulResult;

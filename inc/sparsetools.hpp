@@ -40,9 +40,9 @@ void coo2csc(const MatrixInfo& arr,
              const std::vector<uint32_t>& cooCols,
              CSX& csc);
 
-void csr2bcsr(MatrixInfo& arr, const CSX& csr, CSX& bcsr);
+void csr2bcsrPad(MatrixInfo& arr, const CSX& csr, CSX& bcsr);
 
-void csc2bcsc(const MatrixInfo& arr, const CSX& csc, CSX& bcsc);
+void csc2bcscPad(const MatrixInfo& arr, const CSX& csc, CSX& bcsc);
 
 void mm2csr(char argc, char* argv, CSX& csr, MatrixInfo& arr);
 

@@ -1,26 +1,30 @@
-from scipy.sparse import coo_matrix, csr_matrix, csc_matrix
+from scipy.sparse import coo_matrix, csr_matrix, csc_matrix, find
 from scipy.io import mmread
 import numpy as np
 import sys
+from termcolor import colored
+import time
+from pytictoc import TicToc
+
 
 if(len(sys.argv) != 2):
     print("Usage: python spgemm.py <mtx filename>")
     exit()
 
+# Python SpGEMM
+
 coo = mmread(sys.argv[1])
-coo = np.array(coo.toarray(), dtype=np.uint32)
-# csr = coo.tocsr()
-refMul = np.matmul(coo,coo)
-boolRefMul = (refMul > 0)*1;
+csr = coo.tocsr()
 
-# print("\nTest array A:\n")
-# print(coo)
-# print("\nMultiplication A*A:\n")
-# print(refMul)
-# print("\nBoolean Multiplication A*A:\n")
-# print(boolRefMul)
+t = TicToc()
+t.tic()
+csrMulRef = (csr*csr>0)*1
+t.toc()
 
-csrFile = open("csrMul.txt")
+# C++ SpGEMM
+
+matFile="csrMul.txt"
+csrFile = open(matFile)
 lines = csrFile.readlines()
 csrFile.close()
 if(len(lines) != 2):
@@ -33,11 +37,12 @@ nnz     = len(indices)
 n       = len(pointer)
 data    = np.ones(nnz, dtype=int)
 csrMul = csr_matrix((data, indices, pointer), shape=(n-1,n-1))
-csrMul = csrMul.toarray()
-#print("\nMultiplication A*A reading C++ output")
-#print(csrMul)
 
-if(np.array_equal(csrMul,boolRefMul)):
-    print("Hooray! Test passed")
+# Validation
+
+csrDiffs = find(csrMul-csrMulRef)
+if len(csrDiffs[0])==0 and len(csrDiffs[1])==0 and len(csrDiffs[2])==0:
+    print(colored("Hooray! Test passed","green", attrs=["bold"]))
 else:
-    print("Test failed :(")
+    print(find(csrDiff))
+    print(colored("Test failed :(","red", attrs=["bold"]))

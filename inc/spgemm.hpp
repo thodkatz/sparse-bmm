@@ -2,6 +2,6 @@
 #define SPGEMM_HPP
 
 #include "sparsetools.hpp"
-CSX csxMul(CSX& csr, CSX& csc);
+CSX csxMul(const CSX& csr, const CSX& csc);
 
 #endif

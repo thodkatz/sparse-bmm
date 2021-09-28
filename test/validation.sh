@@ -1,27 +1,33 @@
 #!/usr/bin/bash
 
-if [ $# -ne 1 ]
-then
-    echo "Set your project path: \$PROJECT=~/my/project/"
-    echo "Usage: ./validation.sh <filename.mtx>"
-    exit
-fi;
-
-PROJECT=~/repos/sparse-bmm
-FILE=$PROJECT/$1
-echo "Project path: $PROJECT"
-echo "Full file path: $FILE"
-
-# to be compatible with the matrix market reading of the C++ program we assume that symmetric is general
-sed -i '/symmetric/ s//general/g' $FILE
+PROJECT=/home/tkatz/repos/sparse-bmm
+MATRICES=$PROJECT/matrices
 
 figlet Build | lolcat
 cd ../ && make serial
 
-figlet Run | lolcat
-./bin/serial $FILE
+#matrices=("jgl009/jgl009.mtx" "mycielskian3/mycielskian3.mtx" "mycielskian10/mycielskian10.mtx")
+#matrices=("roadNet-PA/roadNet-PA.mtx")
+#matrices=("mycielskian10/mycielskian10.mtx")
+#matrices=("Stanford/Stanford.mtx")
+#matrices=("G47/G47.mtx")
+#matrices=("wing_nodal/wing_nodal.mtx")
+#matrices=("biplane-9/biplane-9.mtx")
+#matrices=("pli/pli.mtx")
+matrices=("dblp-2010/dblp-2010.mtx")
 
-figlet Validation | lolcat
-cd test/ && python spgemm.py $FILE
+for i in "${matrices[@]}"
+do
+    FILE=$MATRICES/$i
+    echo -e "\nFull file path: $FILE"
+    pwd
 
-rm $PROJECT/test/csrMul.txt
+    # to be compatible with the matrix market reading of the C++ program we assume that symmetric is general
+    sed -i '/symmetric/ s//general/g' $FILE
+
+    figlet Run | lolcat
+    ./bin/serial $FILE
+
+    figlet Validation | lolcat
+    cd test/ && python spgemm.py $FILE && cd ../
+done
