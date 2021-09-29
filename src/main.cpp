@@ -35,19 +35,19 @@ int main(int argc, char* argv[])
     std::cout << "Cols: " << A.nCol << std::endl;
     std::cout << "nnz:  " << A.nnz << std::endl;
 
-    std::cout << "\nCSR" << std::endl;
-    printVector<uint32_t>(csr.pointer, " ");
-    printVector<uint32_t>(csr.indices, " ");
-    std::cout << "\nCSC" << std::endl;
-    printVector<uint32_t>(csc.pointer, " ");
-    printVector<uint32_t>(csc.indices, " ");
+    // std::cout << "\nCSR" << std::endl;
+    // printVector<uint32_t>(csr.pointer, " ");
+    // printVector<uint32_t>(csr.indices, " ");
+    // std::cout << "\nCSC" << std::endl;
+    // printVector<uint32_t>(csc.pointer, " ");
+    // printVector<uint32_t>(csc.indices, " ");
 
     /* ---------- CSR Matrix-Matrix Multiplication ---------- */
     CSX csrMulResult;
     {
         steady_clock::time_point tic = steady_clock::now();
 
-        csrMulResult                 = csxMul(csr, csc);
+        csrMulResult                 = csxMulSTL(csr, csc);
 
         steady_clock::time_point toc = steady_clock::now();
         duration<double> tspan       = duration_cast<duration<double>>(toc - tic);
@@ -58,13 +58,12 @@ int main(int argc, char* argv[])
     /* --- Write results for validation with python script -- */
     csxWriteFile(csrMulResult, "test/csrMul.txt");
 
-    std::cout << "\nBlocking Pad" << std::endl;
+#ifdef BLOCK
+    // std::cout << "\nBlocking Pad" << std::endl;
     BSXPad bcsr;
     BSXPad bcsc;
     A.blockSizeX = std::min((uint32_t)(A.nRow / log10(A.nRow)), A.nRow/2);
     A.blockSizeY = std::min((uint32_t)(A.nCol / log10(A.nCol)), A.nCol/2);
-    A.blockSizeX = 1;
-    A.blockSizeY = 4;
     B.blockSizeX = A.blockSizeX;
     B.blockSizeY = A.blockSizeY;
 
@@ -87,21 +86,21 @@ int main(int argc, char* argv[])
         std::cout << "Time elapsed bcsx: " << tspan.count() << " (s) " << std::endl;
     }
  
-    std::cout << "\nRevert Blocking Pad" << std::endl;
     CSX revertBlocked;
     bcsr2csrPad(A,bcsr,revertBlocked);
-    printVector<uint32_t>(revertBlocked.pointer," ");
-    printVector<uint32_t>(revertBlocked.indices," ");
+    // std::cout << "\nRevert Blocking Pad" << std::endl;
+    // printVector<uint32_t>(revertBlocked.pointer," ");
+    // printVector<uint32_t>(revertBlocked.indices," ");
 
     CSX cscRevert;
     bcsc2cscPad(B,bcsc,cscRevert);
-    printVector<uint32_t>(cscRevert.pointer," ");
-    printVector<uint32_t>(cscRevert.indices," ");
+    // printVector<uint32_t>(cscRevert.pointer," ");
+    // printVector<uint32_t>(cscRevert.indices," ");
 
     A = copyA;
-    std::cout << "\nBlocking No Pad" << std::endl;
     BSXNoPad bcsrNoPad;
     csr2bcsrNoPad(A,csr,bcsrNoPad);
+    // std::cout << "\nBlocking No Pad" << std::endl;
     // printVector<uint32_t>(bcsrNoPad.indices," ");
     // printVector<uint32_t>(bcsrNoPad.pointer," ");
     // printVector<uint32_t>(bcsrNoPad.idBlock," ");
@@ -116,16 +115,17 @@ int main(int argc, char* argv[])
     // printVector<uint32_t>(bcscNoPad.blockPointer," ");
 
 
-    std::cout << "\nRevert Blocking No Pad" << std::endl;
     CSX revertBlockedNoPad;
     bcsr2csrNoPad(A,bcsrNoPad,revertBlockedNoPad);
-    printVector<uint32_t>(revertBlockedNoPad.pointer," ");
-    printVector<uint32_t>(revertBlockedNoPad.indices," ");
+    // std::cout << "\nRevert Blocking No Pad" << std::endl;
+    // printVector<uint32_t>(revertBlockedNoPad.pointer," ");
+    // printVector<uint32_t>(revertBlockedNoPad.indices," ");
 
     CSX cscRevertNoPad;
     bcsc2cscNoPad(B,bcscNoPad,cscRevertNoPad);
-    printVector<uint32_t>(cscRevertNoPad.pointer," ");
-    printVector<uint32_t>(cscRevertNoPad.indices," ");
+    // printVector<uint32_t>(cscRevertNoPad.pointer," ");
+    // printVector<uint32_t>(cscRevertNoPad.indices," ");
+#endif
 
     return 0;
 }

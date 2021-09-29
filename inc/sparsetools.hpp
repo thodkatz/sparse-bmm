@@ -42,8 +42,6 @@ class BSXNoPad : public CSX {
     std::vector<uint32_t> blockPointer;
 };
 
-void mm2coo(int argc, char* argv, std::vector<uint32_t>& cooRows, std::vector<uint32_t>& cooCols, MatrixInfo& arr);
-
 void coo2csr(const MatrixInfo& arr,
              const std::vector<uint32_t>& cooRows,
              const std::vector<uint32_t>& cooCols,
@@ -54,6 +52,13 @@ void coo2csc(const MatrixInfo& arr,
              const std::vector<uint32_t>& cooCols,
              CSX& csc);
 
+void mm2coo(int argc, char* argv, std::vector<uint32_t>& cooRows, std::vector<uint32_t>& cooCols, MatrixInfo& arr);
+
+void mm2csr(char argc, char* argv, CSX& csr, MatrixInfo& arr);
+
+void mm2csc(char argc, char* argv, CSX& csc, MatrixInfo& arr);
+
+/* ----------------------- Padding Data Structure---------------------- */
 void csr2bcsrPad(MatrixInfo& arr, const CSX& csr, BSXPad& bcsr);
 
 void csc2bcscPad(MatrixInfo& arr, const CSX& csc, BSXPad& bcsc);
@@ -62,6 +67,7 @@ void bcsr2csrPad(const MatrixInfo& arr, const BSXPad& bcsr, CSX& csr);
 
 void bcsc2cscPad(const MatrixInfo& arr, const BSXPad& bcsc, CSX& csc);
 
+/* --------------------- No Padding Data Structure--------------------- */
 void csr2bcsrNoPad(MatrixInfo& arr, const CSX& csr, BSXNoPad& bcsr);
 
 void csc2bcscNoPad(MatrixInfo& arr, const CSX& csc, BSXNoPad& bcsc);
@@ -69,9 +75,5 @@ void csc2bcscNoPad(MatrixInfo& arr, const CSX& csc, BSXNoPad& bcsc);
 void bcsr2csrNoPad(const MatrixInfo& arr, const BSXNoPad& bcsr, CSX& csr);
 
 void bcsc2cscNoPad(const MatrixInfo& arr, const BSXNoPad& bcsc, CSX& csc);
-
-void mm2csr(char argc, char* argv, CSX& csr, MatrixInfo& arr);
-
-void mm2csc(char argc, char* argv, CSX& csc, MatrixInfo& arr);
 
 #endif
