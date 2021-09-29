@@ -96,10 +96,7 @@ void mm2coo(int argc, char* argv, std::vector<uint32_t>& cooRows, std::vector<ui
  *   Complexity: Linear.  Specifically O(nnz(A) + max(n_row,n_col))
  *
  */
-void coo2csr(const MatrixInfo& arr,
-             const std::vector<uint32_t>& cooRows,
-             const std::vector<uint32_t>& cooCols,
-             CSX& csr)
+void coo2csr(const MatrixInfo& arr, const std::vector<uint32_t>& cooRows, const std::vector<uint32_t>& cooCols, CSX& csr)
 {
     const uint32_t& nRow = arr.nRow;
     const uint32_t& nnz  = arr.nnz;
@@ -145,10 +142,7 @@ void coo2csr(const MatrixInfo& arr,
  * Source:
  * https://github.com/scipy/scipy/blob/3b36a57/scipy/sparse/sparsetools/coo.h#L34
  */
-void coo2csc(const MatrixInfo& arr,
-             const std::vector<uint32_t>& cooRows,
-             const std::vector<uint32_t>& cooCols,
-             CSX& csc)
+void coo2csc(const MatrixInfo& arr, const std::vector<uint32_t>& cooRows, const std::vector<uint32_t>& cooCols, CSX& csc)
 {
     MatrixInfo swapArr;
     swapArr.nRow = arr.nCol;
@@ -163,56 +157,46 @@ void coo2csc(const MatrixInfo& arr,
  * In order to know the order of blocks we keep all of them including the zero ones padding the pointer array with the
  * count of nnz elements
  */
-void csr2bcsrPad(MatrixInfo& arr, const CSX& csr, CSX& bcsr)
+void csr2bcsrPad(MatrixInfo& arr, const CSX& csr, BSXPad& bcsr)
 {
-    const uint32_t& nRow       = arr.nRow;
-    const uint32_t& nCol       = arr.nCol;
-    const uint32_t& nnz        = arr.nnz;
-    const uint32_t& blockSizeX = arr.blockSizeX;
-    const uint32_t& blockSizeY = arr.blockSizeY;
-    uint32_t& numBlockX        = arr.numBlockX;
-    uint32_t& numBlockY        = arr.numBlockY;
-
-    const std::vector<uint32_t>& csrRow = csr.pointer;
-    const std::vector<uint32_t>& csrCol = csr.indices;
-    std::vector<uint32_t>& bcsrRow      = bcsr.pointer;
-    std::vector<uint32_t>& bcsrCol      = bcsr.indices;
-
-    if (nCol / blockSizeX == 0 || nRow / blockSizeY == 0) {
+    if (arr.nCol / arr.blockSizeX == 0 || arr.nRow / arr.blockSizeY == 0) {
         std::cout << "Block dimensions exceed the matrix dimensions" << std::endl;
         exit(-1);
     }
-    numBlockX            = std::ceil(nCol / blockSizeX);
-    numBlockY            = std::ceil(nRow / blockSizeY);
-    uint32_t totalBlocks = numBlockX * numBlockY; // this will overflow if blockSize too small TODO prevent happening
 
-    bcsrRow.resize(totalBlocks * blockSizeY + 1);
-    bcsrCol.resize(nnz);
+    arr.numBlockX = (arr.nCol % arr.blockSizeX != 0) ? arr.nCol / arr.blockSizeX + 1 : arr.nCol / arr.blockSizeX;
+    arr.numBlockY = (arr.nRow % arr.blockSizeY != 0) ? arr.nRow / arr.blockSizeY + 1 : arr.nRow / arr.blockSizeY;
 
-    bcsrRow[0]            = 0;
-    uint32_t nnzBlocks    = 0;
+    // this will overflow if blockSize too small TODO prevent happening
+    uint32_t totalBlocks = arr.numBlockX * arr.numBlockY;
+
+    bcsr.pointer.resize(totalBlocks * arr.blockSizeY + 1);
+    bcsr.indices.resize(arr.nnz);
+
+    bcsr.pointer[0]       = 0;
+    uint32_t nnz          = 0;
     uint32_t currentBlock = 0;
-    for (uint32_t blockY = 0; blockY < numBlockY; blockY++) {
-        for (uint32_t blockX = 0; blockX < numBlockX; blockX++) {
-            for (uint32_t i = blockY * blockSizeY, blockRow = 0; i < (blockY + 1) * blockSizeY; i++, blockRow++) {
-                currentBlock = blockY * numBlockX + blockX;
+    for (uint32_t blockY = 0; blockY < arr.numBlockY; blockY++) {
+        for (uint32_t blockX = 0; blockX < arr.numBlockX; blockX++) {
+            for (uint32_t i = blockY * arr.blockSizeY, blockRow = 0; i < (blockY + 1) * arr.blockSizeY; i++, blockRow++) {
+                currentBlock = blockY * arr.numBlockX + blockX;
 
                 // padding when out of bounds
-                if (i >= nRow) {
-                    bcsrRow[currentBlock * blockSizeY + blockRow + 1] = nnzBlocks;
+                if (i >= arr.nRow) {
+                    bcsr.pointer[currentBlock * arr.blockSizeY + blockRow + 1] = nnz;
                     continue;
                 }
 
                 // find the column elements of (blockx,blocky) for blockRow
-                for (uint32_t j = csrRow[i]; j < csrRow[i + 1]; j++) {
-                    if (csrCol[j] >= (blockX + 1) * blockSizeX)
+                for (uint32_t j = csr.pointer[i]; j < csr.pointer[i + 1]; j++) {
+                    if (csr.indices[j] >= (blockX + 1) * arr.blockSizeX)
                         break;
-                    if (blockX * blockSizeX <= csrCol[j]) {
-                        bcsrCol[nnzBlocks++] = csrCol[j];
+                    if (blockX * arr.blockSizeX <= csr.indices[j]) {
+                        bcsr.indices[nnz++] = csr.indices[j];
                     }
                 }
 
-                bcsrRow[currentBlock * blockSizeY + blockRow + 1] = nnzBlocks;
+                bcsr.pointer[currentBlock * arr.blockSizeY + blockRow + 1] = nnz;
             }
         }
     }
@@ -221,7 +205,45 @@ void csr2bcsrPad(MatrixInfo& arr, const CSX& csr, CSX& bcsr)
 /**
  * Convert csc to its blocked version
  */
-void csc2bcscPad(const MatrixInfo& arr, const CSX& csc, CSX& bcsc)
+void csc2bcscPad(MatrixInfo& arr, const CSX& csc, BSXPad& bcsc)
+{
+    MatrixInfo& swapArr = arr;
+    swapArr.nRow        = arr.nCol;
+    swapArr.nCol        = arr.nRow;
+    swapArr.nnz         = arr.nnz;
+    swapArr.blockSizeX  = arr.blockSizeY;
+    swapArr.blockSizeY  = arr.blockSizeX;
+    swapArr.numBlockX   = arr.numBlockY;
+    swapArr.numBlockY   = arr.numBlockX;
+
+    csr2bcsrPad(swapArr, csc, bcsc);
+}
+
+void bcsr2csrPad(const MatrixInfo& arr, const BSXPad& bcsr, CSX& csr)
+{
+    csr.pointer.resize(arr.nRow + 1);
+    csr.indices.resize(arr.nnz);
+    csr.pointer[0] = 0;
+
+    uint32_t nnzCount   = 0;
+    uint32_t countRow   = 0;
+    uint32_t idBlock    = 0;
+    uint32_t startBlock = 0;
+    for (uint32_t blockY = 0; blockY < arr.numBlockY; blockY++) {
+        for (uint32_t blockRow = 0; blockRow < arr.blockSizeY && countRow < arr.nRow; blockRow++) {
+            for (uint32_t blockX = 0; blockX < arr.numBlockX; blockX++) {
+                idBlock    = blockX + blockY * arr.numBlockX;
+                startBlock = idBlock * arr.blockSizeY;
+                for (uint32_t idCol = bcsr.pointer[startBlock + blockRow]; idCol < bcsr.pointer[startBlock + blockRow + 1]; idCol++) {
+                    csr.indices[nnzCount++] = bcsr.indices[idCol];
+                }
+            }
+            csr.pointer[++countRow] = nnzCount;
+        }
+    }
+}
+
+void bcsc2cscPad(const MatrixInfo& arr, const BSXPad& bcsc, CSX& csc)
 {
     MatrixInfo swapArr;
     swapArr.nRow       = arr.nCol;
@@ -231,8 +253,7 @@ void csc2bcscPad(const MatrixInfo& arr, const CSX& csc, CSX& bcsc)
     swapArr.blockSizeY = arr.blockSizeX;
     swapArr.numBlockX  = arr.numBlockY;
     swapArr.numBlockY  = arr.numBlockX;
-
-    csr2bcsrPad(swapArr, csc, bcsc);
+    bcsr2csrPad(swapArr, bcsc, csc);
 }
 
 /**
@@ -243,15 +264,132 @@ void csc2bcscPad(const MatrixInfo& arr, const CSX& csc, CSX& bcsc)
  * will count the number of blockX per blockY and another one with the ids of the blocks. The last 2 arrays will be the
  * pointer and the nnz of each block similar to a simple csr structure.
  */
-void csr2bcsr(MatrixInfo& arr, const CSX& csr, CSX& bcsr) {}
+void csr2bcsrNoPad(MatrixInfo& arr, const CSX& csr, BSXNoPad& bcsr)
+{
+    if (arr.nCol / arr.blockSizeX == 0 || arr.nRow / arr.blockSizeY == 0) {
+        std::cout << "Block dimensions exceed the matrix dimensions" << std::endl;
+        exit(-1);
+    }
+
+    arr.numBlockX = (arr.nCol % arr.blockSizeX != 0) ? arr.nCol / arr.blockSizeX + 1 : arr.nCol / arr.blockSizeX;
+    arr.numBlockY = (arr.nRow % arr.blockSizeY != 0) ? arr.nRow / arr.blockSizeY + 1 : arr.nRow / arr.blockSizeY;
+
+    bcsr.indices.resize(arr.nnz);
+    bcsr.pointer.push_back(0);
+    bcsr.blockPointer.resize(arr.numBlockY + 1);
+
+    bcsr.blockPointer[0]   = 0;
+    uint32_t nnz           = 0;
+    uint32_t currentBlock  = 0;
+    uint32_t emptyRow      = 0;
+    uint32_t nonzeroBlocks = 0;
+    bool isFound           = false;
+    for (uint32_t blockY = 0; blockY < arr.numBlockY; blockY++) {
+        for (uint32_t blockX = 0; blockX < arr.numBlockX; blockX++) {
+            emptyRow = 0;
+            for (uint32_t i = blockY * arr.blockSizeY, blockRow = 0; i < (blockY + 1) * arr.blockSizeY; i++, blockRow++) {
+                currentBlock = blockY * arr.numBlockX + blockX;
+
+                // padding when out of bounds
+                if (i >= arr.nRow) {
+                    bcsr.pointer.push_back(nnz);
+                    emptyRow++;
+                    std::cout << "\nEmpty " << emptyRow;
+                    std::cout << "\nOut of bounds, Block Row" << blockRow;
+                    printVector(bcsr.pointer, " ");
+                    continue;
+                }
+
+                // find the column elements of (blockX,blockY) for blockRow
+                isFound = false;
+                for (uint32_t j = csr.pointer[i]; j < csr.pointer[i + 1]; j++) {
+                    if (csr.indices[j] >= (blockX + 1) * arr.blockSizeX) {
+                        break;
+                    }
+                    if (blockX * arr.blockSizeX <= csr.indices[j]) {
+                        bcsr.indices[nnz++] = csr.indices[j];
+                        isFound             = true;
+                    }
+                }
+                if (!isFound)
+                    emptyRow++;
+
+                std::cout << "\nEmpty " << emptyRow << std::endl;
+
+                bcsr.pointer.push_back(nnz);
+                std::cout << "Block Row" << blockRow;
+                printVector(bcsr.pointer, " ");
+            } // filled (blockX,blockY)
+
+            // empty block detected, remove the padding
+            if (emptyRow == arr.blockSizeY) {
+                std::cout << "Before";
+                printVector(bcsr.pointer, " ");
+                bcsr.pointer.erase(bcsr.pointer.end() - arr.blockSizeY, bcsr.pointer.end());
+                std::cout << "After";
+                printVector(bcsr.pointer, " ");
+            }
+            else {
+                bcsr.idBlock.push_back(currentBlock);
+                nonzeroBlocks++;
+            }
+        }
+        bcsr.blockPointer[blockY + 1] = nonzeroBlocks;
+    }
+}
+
+void csc2bcscNoPad(MatrixInfo& arr, const CSX& csc, BSXNoPad& bcsc)
+{
+    MatrixInfo& swapArr = arr;
+    swapArr.nRow        = arr.nCol;
+    swapArr.nCol        = arr.nRow;
+    swapArr.nnz         = arr.nnz;
+    swapArr.blockSizeX  = arr.blockSizeY;
+    swapArr.blockSizeY  = arr.blockSizeX;
+    swapArr.numBlockX   = arr.numBlockY;
+    swapArr.numBlockY   = arr.numBlockX;
+    csr2bcsrNoPad(swapArr, csc, bcsc);
+}
+
+void bcsr2csrNoPad(const MatrixInfo& arr, const BSXNoPad& bcsrNoPad, CSX& csr)
+{
+    csr.pointer.resize(arr.nRow + 1);
+    csr.indices.resize(arr.nnz);
+    csr.pointer[0] = 0;
+
+    uint32_t nnzCount   = 0;
+    uint32_t countRow   = 0;
+    uint32_t startBlock = 0;
+    for (uint32_t blockY = 0; blockY < arr.numBlockY; blockY++) {
+        for (uint32_t blockRow = 0; blockRow < arr.blockSizeY && countRow < arr.nRow; blockRow++) {
+            for (uint32_t blockX = bcsrNoPad.blockPointer[blockY]; blockX < bcsrNoPad.blockPointer[blockY+1]; blockX++) {
+                startBlock = blockX * arr.blockSizeY;
+                for (uint32_t idCol = bcsrNoPad.pointer[startBlock + blockRow]; idCol < bcsrNoPad.pointer[startBlock + blockRow + 1]; idCol++) {
+                    csr.indices[nnzCount++] = bcsrNoPad.indices[idCol];
+                }
+            }
+            csr.pointer[++countRow] = nnzCount;
+        }
+    }
+}
+
+void bcsc2cscNoPad(const MatrixInfo& arr, const BSXNoPad& bcscNoPad, CSX& csc)
+{
+    MatrixInfo swapArr;
+    swapArr.nRow       = arr.nCol;
+    swapArr.nCol       = arr.nRow;
+    swapArr.nnz        = arr.nnz;
+    swapArr.blockSizeX = arr.blockSizeY;
+    swapArr.blockSizeY = arr.blockSizeX;
+    swapArr.numBlockX  = arr.numBlockY;
+    swapArr.numBlockY  = arr.numBlockX;
+    bcsr2csrNoPad(swapArr, bcscNoPad, csc);
+}
 
 /**
  * Convert bcsr or bcsc to its non-blocked version
  *
- * Note:
- * - Assumed that the bloking versions was created by \p csx2bcsx()
  */
-
 void mm2csr(char argc, char* argv, CSX& csr, MatrixInfo& arr)
 {
     std::vector<uint32_t> cooRows;

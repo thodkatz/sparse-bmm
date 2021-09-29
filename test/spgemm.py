@@ -40,6 +40,10 @@ csrMul = csr_matrix((data, indices, pointer), shape=(n-1,n-1))
 
 # Validation
 
+if(csrMul.getnnz() != csrMulRef.getnnz()):
+    print(colored("Test failed :(","red", attrs=["bold"]))
+    print(colored("Incompatible size"))
+
 csrDiffs = find(csrMul-csrMulRef)
 if len(csrDiffs[0])==0 and len(csrDiffs[1])==0 and len(csrDiffs[2])==0:
     print(colored("Hooray! Test passed","green", attrs=["bold"]))

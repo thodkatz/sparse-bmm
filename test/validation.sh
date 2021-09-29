@@ -6,7 +6,7 @@ MATRICES=$PROJECT/matrices
 figlet Build | lolcat
 cd ../ && make serial
 
-#matrices=("jgl009/jgl009.mtx" "mycielskian3/mycielskian3.mtx" "mycielskian10/mycielskian10.mtx")
+matrices=("jgl009/jgl009.mtx" "mycielskian3/mycielskian3.mtx" "mycielskian10/mycielskian10.mtx")
 #matrices=("roadNet-PA/roadNet-PA.mtx")
 #matrices=("mycielskian10/mycielskian10.mtx")
 #matrices=("Stanford/Stanford.mtx")
@@ -14,7 +14,7 @@ cd ../ && make serial
 #matrices=("wing_nodal/wing_nodal.mtx")
 #matrices=("biplane-9/biplane-9.mtx")
 #matrices=("pli/pli.mtx")
-matrices=("dblp-2010/dblp-2010.mtx")
+#matrices=("dblp-2010/dblp-2010.mtx")
 
 for i in "${matrices[@]}"
 do
