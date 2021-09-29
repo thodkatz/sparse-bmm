@@ -63,16 +63,23 @@ int main(int argc, char* argv[])
     BSXPad bcsc;
     A.blockSizeX = std::min((uint32_t)(A.nRow / log10(A.nRow)), A.nRow/2);
     A.blockSizeY = std::min((uint32_t)(A.nCol / log10(A.nCol)), A.nCol/2);
+    A.blockSizeX = 1;
+    A.blockSizeY = 4;
+    B.blockSizeX = A.blockSizeX;
+    B.blockSizeY = A.blockSizeY;
+
+    MatrixInfo copyA = A;
+    MatrixInfo copyB = B;
 
     {
         steady_clock::time_point tic = steady_clock::now();
 
         std::cout << "\nBlocks size: (x,y) " << A.blockSizeX << "," << A.blockSizeY << std::endl;
         csr2bcsrPad(A, csr, bcsr);
-        //printVector<uint32_t>(bcsr.pointer,",");
-        //printVector<uint32_t>(bcsr.indices,",");
+        // printVector<uint32_t>(bcsr.pointer,",");
+        // printVector<uint32_t>(bcsr.indices,",");
 
-        csc2bcscPad(A, csc, bcsc);
+        csc2bcscPad(B, csc, bcsc);
         //printVector<uint32_t>(bcsc.pointer,",");
         //printVector<uint32_t>(bcsc.indices,",");
         steady_clock::time_point toc = steady_clock::now();
@@ -87,24 +94,26 @@ int main(int argc, char* argv[])
     printVector<uint32_t>(revertBlocked.indices," ");
 
     CSX cscRevert;
-    bcsc2cscPad(A,bcsc,cscRevert);
+    bcsc2cscPad(B,bcsc,cscRevert);
     printVector<uint32_t>(cscRevert.pointer," ");
     printVector<uint32_t>(cscRevert.indices," ");
 
+    A = copyA;
     std::cout << "\nBlocking No Pad" << std::endl;
     BSXNoPad bcsrNoPad;
     csr2bcsrNoPad(A,csr,bcsrNoPad);
-    printVector<uint32_t>(bcsrNoPad.indices," ");
-    printVector<uint32_t>(bcsrNoPad.pointer," ");
-    printVector<uint32_t>(bcsrNoPad.idBlock," ");
-    printVector<uint32_t>(bcsrNoPad.blockPointer," ");
+    // printVector<uint32_t>(bcsrNoPad.indices," ");
+    // printVector<uint32_t>(bcsrNoPad.pointer," ");
+    // printVector<uint32_t>(bcsrNoPad.idBlock," ");
+    // printVector<uint32_t>(bcsrNoPad.blockPointer," ");
 
+    B = copyB;
     BSXNoPad bcscNoPad;
-    csc2bcscNoPad(A,csc,bcscNoPad);
-    printVector<uint32_t>(bcscNoPad.indices," ");
-    printVector<uint32_t>(bcscNoPad.pointer," ");
-    printVector<uint32_t>(bcscNoPad.idBlock," ");
-    printVector<uint32_t>(bcscNoPad.blockPointer," ");
+    csc2bcscNoPad(B,csc,bcscNoPad);
+    // printVector<uint32_t>(bcscNoPad.indices," ");
+    // printVector<uint32_t>(bcscNoPad.pointer," ");
+    // printVector<uint32_t>(bcscNoPad.idBlock," ");
+    // printVector<uint32_t>(bcscNoPad.blockPointer," ");
 
 
     std::cout << "\nRevert Blocking No Pad" << std::endl;
@@ -114,7 +123,7 @@ int main(int argc, char* argv[])
     printVector<uint32_t>(revertBlockedNoPad.indices," ");
 
     CSX cscRevertNoPad;
-    bcsc2cscNoPad(A,bcscNoPad,cscRevertNoPad);
+    bcsc2cscNoPad(B,bcscNoPad,cscRevertNoPad);
     printVector<uint32_t>(cscRevertNoPad.pointer," ");
     printVector<uint32_t>(cscRevertNoPad.indices," ");
 

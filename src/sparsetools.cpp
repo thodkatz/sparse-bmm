@@ -294,9 +294,9 @@ void csr2bcsrNoPad(MatrixInfo& arr, const CSX& csr, BSXNoPad& bcsr)
                 if (i >= arr.nRow) {
                     bcsr.pointer.push_back(nnz);
                     emptyRow++;
-                    std::cout << "\nEmpty " << emptyRow;
-                    std::cout << "\nOut of bounds, Block Row" << blockRow;
-                    printVector(bcsr.pointer, " ");
+                    //std::cout << "\nEmpty " << emptyRow;
+                    //std::cout << "\nOut of bounds, Block Row" << blockRow;
+                    //printVector(bcsr.pointer, " ");
                     continue;
                 }
 
@@ -314,20 +314,20 @@ void csr2bcsrNoPad(MatrixInfo& arr, const CSX& csr, BSXNoPad& bcsr)
                 if (!isFound)
                     emptyRow++;
 
-                std::cout << "\nEmpty " << emptyRow << std::endl;
+                //std::cout << "\nEmpty " << emptyRow << std::endl;
 
                 bcsr.pointer.push_back(nnz);
-                std::cout << "Block Row" << blockRow;
-                printVector(bcsr.pointer, " ");
+                //std::cout << "Block Row" << blockRow;
+                //printVector(bcsr.pointer, " ");
             } // filled (blockX,blockY)
 
             // empty block detected, remove the padding
             if (emptyRow == arr.blockSizeY) {
-                std::cout << "Before";
-                printVector(bcsr.pointer, " ");
+                //std::cout << "Before";
+                //printVector(bcsr.pointer, " ");
                 bcsr.pointer.erase(bcsr.pointer.end() - arr.blockSizeY, bcsr.pointer.end());
-                std::cout << "After";
-                printVector(bcsr.pointer, " ");
+                //std::cout << "After";
+                //printVector(bcsr.pointer, " ");
             }
             else {
                 bcsr.idBlock.push_back(currentBlock);
@@ -348,6 +348,7 @@ void csc2bcscNoPad(MatrixInfo& arr, const CSX& csc, BSXNoPad& bcsc)
     swapArr.blockSizeY  = arr.blockSizeX;
     swapArr.numBlockX   = arr.numBlockY;
     swapArr.numBlockY   = arr.numBlockX;
+
     csr2bcsrNoPad(swapArr, csc, bcsc);
 }
 
