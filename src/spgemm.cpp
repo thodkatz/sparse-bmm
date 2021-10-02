@@ -1,11 +1,16 @@
 #include <array>
 #include <algorithm>
+#include <utility>
+#include "spgemm.hpp"
 #include "sparsetools.hpp"
 #include "utils.hpp"
 
-CSX csxMul(const CSX& csr, const CSX& csc)
+/**
+ *  C = A * B, where A CSR, B CSC and C CSR format
+ */
+CSX csxMul(const CSX& csrA, const CSX& cscB)
 {
-    uint32_t rows = csr.pointer.size() - 1;
+    uint32_t rows = csrA.pointer.size() - 1;
 
     CSX mulResult;
     mulResult.pointer.resize(rows + 1);
@@ -14,24 +19,24 @@ CSX csxMul(const CSX& csr, const CSX& csc)
     uint32_t nnz = 0;
     for (uint32_t i = 0, idxCol = 0, idxRow = 0; i < rows; i++) {
         for (uint32_t j = 0; j < rows; j++) {
-            idxCol = csr.pointer[i];
-            idxRow = csc.pointer[j];
-            if (idxCol == csr.pointer[i + 1]) {
+            idxCol = csrA.pointer[i];
+            if (idxCol == csrA.pointer[i + 1]) {
                 break;
             }
+            idxRow = cscB.pointer[j];
 
             // find common elements row ith and column ith (sorted)
             // two pointers version
-            while (idxCol < csr.pointer[i + 1] && idxRow < csc.pointer[j + 1]) {
-                if (csr.indices[idxCol] == csc.indices[idxRow]) {
+            while (idxCol < csrA.pointer[i + 1] && idxRow < cscB.pointer[j + 1]) {
+                if (csrA.indices[idxCol] == cscB.indices[idxRow]) {
                     mulResult.indices.push_back(j);
                     nnz++;
                     break;
                 }
-                if (csr.indices[idxCol] > csc.indices[idxRow]) {
+                if (csrA.indices[idxCol] > cscB.indices[idxRow]) {
                     idxRow++;
                 }
-                if (csr.indices[idxCol] < csc.indices[idxRow]) {
+                if (csrA.indices[idxCol] < cscB.indices[idxRow]) {
                     idxCol++;
                 }
             }
@@ -42,9 +47,12 @@ CSX csxMul(const CSX& csr, const CSX& csc)
     return mulResult;
 }
 
-CSX csxMulSTL(const CSX& csr, const CSX& csc)
+/**
+ * An optimized compressed SpGEMM using STL variant of std::set_intersection()
+ */
+CSX csxMulSTL(const CSX& csrA, const CSX& cscB)
 {
-    uint32_t rows = csr.pointer.size() - 1;
+    uint32_t rows = csrA.pointer.size() - 1;
 
     CSX mulResult;
     mulResult.pointer.resize(rows + 1);
@@ -57,37 +65,21 @@ CSX csxMulSTL(const CSX& csr, const CSX& csc)
     uint32_t idEndRow   = 0;
     for (uint32_t i = 0; i < rows; i++) {
         for (uint32_t j = 0; j < rows; j++) {
-            idStartCol = csr.pointer[i];
-            idEndCol   = csr.pointer[i + 1];
-            if (idStartCol == idEndCol)
+            idStartCol = csrA.pointer[i];
+            idEndCol   = csrA.pointer[i + 1];
+            if (idStartCol == idEndCol) {
                 break;
-            idStartRow = csc.pointer[j];
-            idEndRow   = csc.pointer[j + 1];
+            }
 
-            // auto result = std::find_first_of(csr.indices.begin() + idStartCol, csr.indices.begin() + idEndCol, csc.indices.begin() + idStartRow, csc.indices.begin() + idEndRow);
-            // if (result != csr.indices.begin() + idEndCol) {
-            //     mulResult.indices.push_back(j);
-            //     nnz++;
-            // }
+            idStartRow = cscB.pointer[j];
+            idEndRow   = cscB.pointer[j + 1];
 
-            bool isCommon = hasCommon(csr.indices.begin() + idStartCol, csr.indices.begin() + idEndCol, csc.indices.begin() + idStartRow, csc.indices.begin() + idEndRow);
+            bool isCommon = hasCommon(
+                csrA.indices.begin() + idStartCol, csrA.indices.begin() + idEndCol, cscB.indices.begin() + idStartRow, cscB.indices.begin() + idEndRow);
             if (isCommon) {
                 mulResult.indices.push_back(j);
                 nnz++;
             }
-
-            // std::vector<uint32_t> result;
-            // std::set_intersection(csr.indices.begin() + idStartCol, csr.indices.begin() + idEndCol, csc.indices.begin() + idStartRow, csc.indices.begin() + idEndRow, std::back_inserter(result));
-            // if (result.size() != 0) {
-            //     mulResult.indices.push_back(j);
-            //     nnz++;
-            // }
-
-            // bool result = has_common_elements(csr.indices.begin() + idStartCol, csr.indices.begin() + idEndCol, csc.indices.begin() + idStartRow, csc.indices.begin() + idEndRow);
-            // if (result) {
-            //      mulResult.indices.push_back(j);
-            //      nnz++;
-            // }
         }
         mulResult.pointer[i + 1] = nnz;
     }
@@ -95,8 +87,310 @@ CSX csxMulSTL(const CSX& csr, const CSX& csc)
     return mulResult;
 }
 
-BSXPad csxMulPad(const BSXPad& bcsr, const BSXPad& bcsc)
+CSX csxMul(const CSX& csrA, const CSX& cscB, const CSX& csrF)
 {
-    CSX subCSR;
-    CSX subCSC;
+    uint32_t rows = csrA.pointer.size() - 1;
+
+    CSX mulResult;
+    mulResult.pointer.resize(rows + 1);
+    mulResult.pointer.push_back(0);
+
+    uint32_t nnz        = 0;
+    uint32_t idStartCol = 0;
+    uint32_t idEndCol   = 0;
+    uint32_t idStartRow = 0;
+    uint32_t idEndRow   = 0;
+    for (uint32_t i = 0; i < rows; i++) {
+        for (uint32_t idCol = csrF.pointer[i], j = 0; idCol < csrF.pointer[i + 1]; idCol++) {
+            j = csrF.indices[idCol];
+
+            idStartCol = csrA.pointer[i];
+            idEndCol   = csrA.pointer[i + 1];
+            if (idStartCol == idEndCol) {
+                break;
+            }
+
+            idStartRow = cscB.pointer[j];
+            idEndRow   = cscB.pointer[j + 1];
+
+            bool isCommon = hasCommon(
+                csrA.indices.begin() + idStartCol, csrA.indices.begin() + idEndCol, cscB.indices.begin() + idStartRow, cscB.indices.begin() + idEndRow);
+            if (isCommon) {
+                mulResult.indices.push_back(j);
+                nnz++;
+            }
+        }
+        mulResult.pointer[i + 1] = nnz;
+    }
+
+    return mulResult;
+}
+
+CSX bmmPerBlock(const BSXNoPad& csrA, const BSXNoPad& cscB, const CSX& csrF, uint32_t pointerOffsetA, uint32_t pointerOffsetB, uint32_t blockSize)
+{
+    uint32_t rows = blockSize;
+
+    CSX mulResult;
+    mulResult.pointer.resize(rows + 1);
+    mulResult.pointer.push_back(0);
+
+    uint32_t nnz        = 0;
+    uint32_t idStartCol = 0;
+    uint32_t idEndCol   = 0;
+    uint32_t idStartRow = 0;
+    uint32_t idEndRow   = 0;
+    for (uint32_t i = 0; i < rows; i++) {
+        for (uint32_t idCol = csrF.pointer[i], j = 0; idCol < csrF.pointer[i + 1]; idCol++) {
+            j = csrF.indices[idCol] + pointerOffsetB;
+
+            idStartCol = csrA.pointer[i + pointerOffsetA];
+            idEndCol   = csrA.pointer[i + pointerOffsetA + 1];
+            if (idStartCol == idEndCol) {
+                break;
+            }
+
+            idStartRow = cscB.pointer[j];
+            idEndRow   = cscB.pointer[j + 1];
+
+            bool isCommon = hasCommon(
+                csrA.indices.begin() + idStartCol, csrA.indices.begin() + idEndCol, cscB.indices.begin() + idStartRow, cscB.indices.begin() + idEndRow);
+            if (isCommon) {
+                mulResult.indices.push_back(j);
+                nnz++;
+            }
+        }
+        mulResult.pointer[i + 1] = nnz;
+    }
+
+    return mulResult;
+}
+
+/**
+ *  Blocking Matrix-Matrix Multiplication C = F .* (A * B), where C-BCSR, A-BCSR, B-BCSC, F-CSR
+ *  Note:
+ *  The blocking techniques used is the no padding, keep tracking the non zero blocks.
+ */
+BSXNoPad bmmBlock(const MatrixInfo& F, const BSXNoPad& bcsrA, const BSXNoPad& bcscB, const BSXNoPad& bcsrF)
+{
+    // CSX csrResultBlock;
+    BSXNoPad result;
+    result.pointer.push_back(0);
+
+    uint32_t indexBlockStartCol = 0;
+    uint32_t indexBlockEndCol   = 0;
+    uint32_t indexBlockStartRow = 0;
+    uint32_t indexBlockEndRow   = 0;
+    uint32_t nnzBlocks          = 0;
+    for (uint32_t blockY = 0; blockY < F.numBlockY; blockY++) {
+        for (uint32_t indexBlockX = bcsrF.blockPointer[blockY], idBlockCol = 0; indexBlockX < bcsrF.blockPointer[blockY + 1]; indexBlockX++) {
+            idBlockCol = bcsrF.idBlock[indexBlockX];
+
+            indexBlockStartCol = bcsrA.blockPointer[blockY];
+            indexBlockEndCol   = bcsrA.blockPointer[blockY + 1];
+            // if (indexBlockStartCol == indexBlockEndCol) {
+            //     break;
+            // }
+
+            indexBlockStartRow = bcscB.blockPointer[idBlockCol];
+            indexBlockEndRow   = bcscB.blockPointer[idBlockCol + 1];
+
+            CSX csrBlockMask;
+            printVector(bcsrF.pointer, " ");
+
+            getBlock(bcsrF, csrBlockMask, indexBlockX, F.blockSizeY);
+            uint32_t pointerOffset = bcsrF.pointer[indexBlockX * F.blockSizeY];
+            uint32_t indicesOffset = idBlockCol * F.blockSizeX;
+            removeOffset(csrBlockMask,pointerOffset,indicesOffset);
+            toDense(csrBlockMask, F.blockSizeY, F.blockSizeX, sparseType::CSR, 0, 0);
+
+            CSX csrResultBlock =
+                subBlockMul(bcsrA, bcscB, csrBlockMask, F.blockSizeY, F.blockSizeX,indexBlockStartCol, indexBlockEndCol, indexBlockStartRow, indexBlockEndRow);
+
+            // check if empty block
+            // if (csrResultBlock.pointer[F.blockSizeY] != 0) {
+            //     result.idBlock.push_back(idBlockCol);
+            //     nnzBlocks++;
+            // }
+            // appendResult(result, csrResultBlock);
+        }
+        // result.blockPointer.push_back(nnzBlocks);
+    }
+
+    return result;
+}
+
+void removeOffset(CSX& csrBlockMask,uint32_t pointerOffset, uint32_t indicesOffset) {
+    for(auto& i : csrBlockMask.pointer) {
+        i -= pointerOffset;
+    }
+    for(auto& i: csrBlockMask.indices) {
+        i -= indicesOffset;
+    }
+}
+
+void getBlock(const BSXNoPad& bcsx, CSX& block, uint32_t nnzBlocksPassed, uint32_t blockSize)
+{
+    uint32_t startPointer = nnzBlocksPassed * blockSize;
+    uint32_t endPointer   = startPointer + blockSize;
+    uint32_t startIndices = bcsx.pointer[startPointer];
+    uint32_t endIndices   = bcsx.pointer[endPointer];
+
+    std::copy(bcsx.pointer.begin() + startPointer, bcsx.pointer.begin() + endPointer + 1, std::back_inserter(block.pointer));
+    std::copy(bcsx.indices.begin() + startIndices, bcsx.indices.begin() + endIndices, std::back_inserter(block.indices));
+}
+
+/**
+ *  Outer block level
+ */
+void appendResult(BSXNoPad& result, const CSX& csrResultBlock)
+{
+    // append pointer and indices content
+    result.pointer.insert(result.pointer.end(), csrResultBlock.pointer.begin() + 1, csrResultBlock.pointer.end());
+    result.indices.insert(result.indices.end(), csrResultBlock.indices.begin(), csrResultBlock.indices.end());
+}
+
+/**
+ *  Outer block level
+ */
+CSX subBlockMul(const BSXNoPad& bcsrA,
+                const BSXNoPad& bcscB,
+                CSX& csrMask,
+                uint32_t blockSizeY,
+                uint32_t blockSizeX,
+                uint32_t indexBlockStartCol,
+                uint32_t indexBlockEndCol,
+                uint32_t indexBlockStartRow,
+                uint32_t indexBlockEndRow)
+{
+    // find the neighbors and the indices to calculate the offset
+    // std::vector<std::pair<uint32_t, uint32_t>> indicesOfCommon;
+    std::vector<uint32_t> indicesOfCommon;
+    indicesIntersection(bcsrA.idBlock.begin() + indexBlockStartCol,
+                        bcsrA.idBlock.begin() + indexBlockEndCol,
+                        bcscB.idBlock.begin() + indexBlockStartRow,
+                        bcscB.idBlock.begin() + indexBlockEndRow,
+                        std::back_inserter(indicesOfCommon));
+
+    CSX csrBlockCold;
+    CSX csrBlockCnew;
+
+    uint32_t pointerOffsetA = 0;
+    uint32_t pointerOffsetB = 0;
+    for (uint32_t i = 0, first = 0, second = 0; i < indicesOfCommon.size(); i += 2) {
+        first                   = indicesOfCommon[i];
+        second                  = indicesOfCommon[i + 1];
+        pointerOffsetA = (first + indexBlockStartCol) * blockSizeY;
+        pointerOffsetB = (second + indexBlockStartRow) * blockSizeY;
+
+        if (i==0) {
+            csrBlockCold = bmmPerBlock(bcsrA, bcscB, csrMask, pointerOffsetA, pointerOffsetB, blockSizeY);
+            //toDense(csrBlockCold,blockSizeY,blockSizeX,sparseType::CSR,0,0);
+            printVector(csrBlockCold.pointer," ");
+            printVector(csrBlockCold.indices," ");
+            csrBlockCnew = csrBlockCold;
+        }
+        else {
+            csrBlockCnew = bmmPerBlock(bcsrA, bcscB, csrMask, pointerOffsetA, pointerOffsetB, blockSizeY);
+            csrBlockCnew = updateBlockC(csrBlockCnew, csrBlockCold);
+            csrBlockCold = csrBlockCnew;
+        }
+
+        if (i != indicesOfCommon.size() - 2) {
+            csrMask = updateMask(csrMask, csrBlockCnew); // no need to calculate last iteration
+        }
+    }
+
+    return csrBlockCnew;
+}
+
+/**
+ *  Inner block level
+ *
+ *  Update the mask based on the previous result and the new one
+ */
+CSX updateMask(const CSX& csrNewMask, const CSX& csrOldMask)
+{
+    uint32_t rows = csrNewMask.pointer.size() - 1;
+    uint32_t nnz  = 0;
+
+    CSX ret;
+    ret.pointer.resize(rows + 1);
+    ret.pointer[0] = 0;
+
+    uint32_t prevSize = 0;
+    for (uint32_t i = 0; i < rows; i++) {
+        prevSize = ret.indices.size();
+        std::set_symmetric_difference(csrNewMask.indices.begin() + csrNewMask.pointer[i],
+                                      csrNewMask.indices.begin() + csrNewMask.pointer[i + 1],
+                                      csrOldMask.indices.begin() + csrOldMask.pointer[i],
+                                      csrOldMask.indices.begin() + csrOldMask.pointer[i + 1],
+                                      std::back_inserter(ret.indices));
+        nnz += ret.indices.size() - prevSize;
+        ret.pointer[i + 1] = nnz;
+    }
+
+    return ret;
+}
+
+/**
+ *  Inner block level
+ *
+ *  Concatenate two CSR blocks
+ *
+ *  We expect the new CSR block to have different values of indices from the old CSR due to masking (check only the false (0) coordinates)
+ *  Requirement: The values of the indices array should not have values in common, in order for the update to be correct, otherwise we will have duplicates
+ */
+CSX updateBlockC(const CSX& csrNew, const CSX& csrOld)
+{
+    uint32_t rows = csrNew.pointer.size() - 1;
+    uint32_t nnz  = 0;
+
+    CSX ret;
+    ret.pointer.resize(rows + 1);
+    ret.pointer[0] = 0;
+
+    uint32_t prevSize = 0;
+    for (uint32_t i = 0; i < rows; i++) {
+
+        // std::cout << "\nIteration: " << i << std::endl;
+
+        // empty lines
+        // if (csrNew.pointer[i] == csrNew.pointer[i + 1] && csrOld.pointer[i] == csrOld.pointer[i + 1]) {
+        //     ret.pointer[i+1] = nnz;
+        //     continue;
+        // }
+
+        prevSize = ret.indices.size();
+        std::merge(csrNew.indices.begin() + csrNew.pointer[i],
+                   csrNew.indices.begin() + csrNew.pointer[i + 1],
+                   csrOld.indices.begin() + csrOld.pointer[i],
+                   csrOld.indices.begin() + csrOld.pointer[i + 1],
+                   std::back_inserter(ret.indices));
+
+        nnz += ret.indices.size() - prevSize;
+        ret.pointer[i + 1] = nnz;
+
+        printVector(ret.pointer, ",");
+        printVector(ret.indices, ",");
+    }
+
+    return ret;
+}
+
+CSX fillMaskOnes(uint32_t blockSizeY, uint32_t blockSizeX)
+{
+    CSX csrMask;
+    csrMask.pointer.resize(blockSizeY + 1);
+    csrMask.indices.resize(blockSizeY * blockSizeX);
+    csrMask.pointer[0] = 0;
+
+    uint32_t nnz = 0;
+    for (uint32_t i = 0; i < blockSizeY; i++) {
+        for (uint32_t j = 0; j < blockSizeX; j++) {
+            csrMask.indices[nnz++] = j;
+        }
+        csrMask.pointer[i + 1] = nnz;
+    }
+
+    return csrMask;
 }

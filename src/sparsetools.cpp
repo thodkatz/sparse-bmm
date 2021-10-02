@@ -1,138 +1,74 @@
 #include <algorithm>
 #include <vector>
 #include <cmath>
-#include "mmio.hpp"
+#include <fstream>
 #include "utils.hpp"
 
 /**
  * Source:
  * https://math.nist.gov/MatrixMarket/mmio-c.html
  */
-void mm2coo(int argc, char* argv, std::vector<uint32_t>& cooRows, std::vector<uint32_t>& cooCols, MatrixInfo& arr)
+void mm2coo(char* argv, std::vector<uint32_t>& cooRows, std::vector<uint32_t>& cooCols, MatrixInfo& arr)
 {
-    uint32_t& nRow = arr.nRow;
-    uint32_t& nCol = arr.nCol;
-    uint32_t& nnz  = arr.nnz;
+    std::ifstream f(argv);
+    std::string line;
+    if (f.is_open()) {
+        while (f.peek() == '%') {
+            getline(f, line);
+        }
+        f >> arr.nRow >> arr.nCol >> arr.nnz;
 
-    MM_typecode matcode;
-    FILE* f;
+        cooRows.resize(arr.nnz);
+        cooCols.resize(arr.nnz);
 
-    // expecting a filename to read (./main <filename>)
-    if (argc < 2) {
-        printf("Missed command line arguements\n");
-        fprintf(stderr, "Usage: ./bin [martix-market-filename]\n");
-        exit(1);
+        for (uint32_t i = 0; i < arr.nnz; i++) {
+            f >> cooRows[i] >> cooCols[i];
+            cooRows[i]--;
+            cooCols[i]--;
+        }
+        f.close();
     }
     else {
-        if ((f = fopen(argv, "r")) == NULL) {
-            printf("Can't open file\n");
-            exit(1);
-        }
-    }
-
-    if (mm_read_banner(f, &matcode) != 0) {
-        printf("Could not process Matrix Market banner.\n");
-        exit(1);
-    }
-
-    // what MM formats do you support?
-    if (!(mm_is_matrix(matcode) && mm_is_coordinate(matcode) && mm_is_pattern(matcode))) {
-        printf("Sorry, this application does not support ");
-        printf("Matrix Market type: [%s]\n", mm_typecode_to_str(matcode));
-        exit(1);
-    }
-
-    /* find out size of sparse matrix .... */
-    if ((mm_read_mtx_crd_size(f, &nRow, &nCol, &nnz)) != 0)
-        exit(1);
-
-    cooRows.resize(nnz);
-    cooCols.resize(nnz);
-
-    uint32_t x, y = 0;
-    for (uint32_t i = 0; i < nnz; i++) {
-        fscanf(f, "%u %u\n", &x, &y);
-        cooRows[i] = x;
-        cooCols[i] = y;
-        /* adjust from 1-based to 0-based */
-        cooRows[i]--;
-        cooCols[i]--;
-    }
-
-    printf("Success, MM format is converted to COO\n");
-
-    if (f != stdin) {
-        fclose(f);
+        std::cout << "Unable to open file" << std::endl;
+        exit(-1);
     }
 }
 
 /*
  * Source:
  * https://github.com/scipy/scipy/blob/master/scipy/sparse/sparsetools/coo.h
- *
- * Compute B = A for COO matrix A, CSR matrix B
- *
- * Input Arguments:
- *   I  n_row      - number of rows in A
- *   I  n_col      - number of columns in A
- *   I  nnz        - number of nonzeros in A
- *   I  Ai[nnz(A)] - row indices
- *   I  Aj[nnz(A)] - column indices
- * Output Arguments:
- *   I Bp  - row pointer
- *   I Bj  - column indices
- *
- * Note:
- *   Output arrays Bp, Bj, and Bx must be preallocated
- *
- * Note:
- *   Matrix A assumed to be boolean, thus no values array needed.
- *
- * Note:
- *   Input:  row and column indices *are not* assumed to be ordered
- *
- *   Note: duplicate entries are carried over to the CSR represention
- *
- *   Complexity: Linear.  Specifically O(nnz(A) + max(n_row,n_col))
- *
  */
 void coo2csr(const MatrixInfo& arr, const std::vector<uint32_t>& cooRows, const std::vector<uint32_t>& cooCols, CSX& csr)
 {
-    const uint32_t& nRow = arr.nRow;
-    const uint32_t& nnz  = arr.nnz;
-
-    std::vector<uint32_t>& csrRow = csr.pointer;
-    std::vector<uint32_t>& csrCol = csr.indices;
-
     // compute number of non-zero entries per row of A
-    csrRow.resize(nRow + 1);
-    csrCol.resize(nnz);
+    csr.pointer.resize(arr.nRow + 1);
+    csr.indices.resize(arr.nnz);
 
-    for (uint32_t i = 0; i < nnz; i++) {
-        csrRow[cooRows[i]]++;
+    for (uint32_t i = 0; i < arr.nnz; i++) {
+        csr.pointer[cooRows[i]]++;
     }
 
-    // cumsum the nnz per row to get rowPointer[]
-    for (uint32_t i = 0, cumsum = 0; i < nRow; i++) {
-        uint32_t temp = csrRow[i];
-        csrRow[i]     = cumsum;
+    // cumsum the arr.nnz per row to get rowPointer[]
+    for (uint32_t i = 0, cumsum = 0; i < arr.nRow; i++) {
+        uint32_t temp  = csr.pointer[i];
+        csr.pointer[i] = cumsum;
         cumsum += temp;
     }
-    csrRow[nRow] = nnz;
+    csr.pointer[arr.nRow] = arr.nnz;
 
     // write cooCols,Ax into colIndices,Bx
-    for (uint32_t i = 0; i < nnz; i++) {
+    for (uint32_t i = 0; i < arr.nnz; i++) {
         uint32_t row  = cooRows[i];
-        uint32_t dest = csrRow[row];
+        uint32_t dest = csr.pointer[row];
 
-        csrCol[dest] = cooCols[i];
-        csrRow[row]++;
+        csr.indices[dest] = cooCols[i];
+        csr.pointer[row]++;
     }
 
-    for (uint32_t i = 0, last = 0; i <= nRow; i++) {
-        uint32_t temp = csrRow[i];
-        csrRow[i]     = last;
-        last          = temp;
+    for (uint32_t i = 0, last = 0; i <= arr.nRow; i++) {
+        uint32_t temp  = csr.pointer[i];
+        csr.pointer[i] = last;
+        last           = temp;
     }
 
     // now Bp,Bj,Bx form a CSR representation (with possible duplicates)
@@ -280,7 +216,7 @@ void csr2bcsrNoPad(MatrixInfo& arr, const CSX& csr, BSXNoPad& bcsr)
 
     bcsr.blockPointer[0]   = 0;
     uint32_t nnz           = 0;
-    uint32_t currentBlock  = 0;
+    //uint32_t currentBlock  = 0;
     uint32_t emptyRow      = 0;
     uint32_t nonzeroBlocks = 0;
     bool isFound           = false;
@@ -288,15 +224,15 @@ void csr2bcsrNoPad(MatrixInfo& arr, const CSX& csr, BSXNoPad& bcsr)
         for (uint32_t blockX = 0; blockX < arr.numBlockX; blockX++) {
             emptyRow = 0;
             for (uint32_t i = blockY * arr.blockSizeY, blockRow = 0; i < (blockY + 1) * arr.blockSizeY; i++, blockRow++) {
-                currentBlock = blockY * arr.numBlockX + blockX;
+                //currentBlock = blockY * arr.numBlockX + blockX;
 
                 // padding when out of bounds
                 if (i >= arr.nRow) {
                     bcsr.pointer.push_back(nnz);
                     emptyRow++;
-                    //std::cout << "\nEmpty " << emptyRow;
-                    //std::cout << "\nOut of bounds, Block Row" << blockRow;
-                    //printVector(bcsr.pointer, " ");
+                    // std::cout << "\nEmpty " << emptyRow;
+                    // std::cout << "\nOut of bounds, Block Row" << blockRow;
+                    // printVector(bcsr.pointer, " ");
                     continue;
                 }
 
@@ -314,23 +250,24 @@ void csr2bcsrNoPad(MatrixInfo& arr, const CSX& csr, BSXNoPad& bcsr)
                 if (!isFound)
                     emptyRow++;
 
-                //std::cout << "\nEmpty " << emptyRow << std::endl;
+                // std::cout << "\nEmpty " << emptyRow << std::endl;
 
                 bcsr.pointer.push_back(nnz);
-                //std::cout << "Block Row" << blockRow;
-                //printVector(bcsr.pointer, " ");
+                // std::cout << "Block Row" << blockRow;
+                // printVector(bcsr.pointer, " ");
             } // filled (blockX,blockY)
 
             // empty block detected, remove the padding
             if (emptyRow == arr.blockSizeY) {
-                //std::cout << "Before";
-                //printVector(bcsr.pointer, " ");
+                // std::cout << "Before";
+                // printVector(bcsr.pointer, " ");
                 bcsr.pointer.erase(bcsr.pointer.end() - arr.blockSizeY, bcsr.pointer.end());
-                //std::cout << "After";
-                //printVector(bcsr.pointer, " ");
+                // std::cout << "After";
+                // printVector(bcsr.pointer, " ");
             }
             else {
-                bcsr.idBlock.push_back(currentBlock);
+                //bcsr.idBlock.push_back(currentBlock);
+                bcsr.idBlock.push_back(blockX);
                 nonzeroBlocks++;
             }
         }
@@ -363,7 +300,7 @@ void bcsr2csrNoPad(const MatrixInfo& arr, const BSXNoPad& bcsrNoPad, CSX& csr)
     uint32_t startBlock = 0;
     for (uint32_t blockY = 0; blockY < arr.numBlockY; blockY++) {
         for (uint32_t blockRow = 0; blockRow < arr.blockSizeY && countRow < arr.nRow; blockRow++) {
-            for (uint32_t blockX = bcsrNoPad.blockPointer[blockY]; blockX < bcsrNoPad.blockPointer[blockY+1]; blockX++) {
+            for (uint32_t blockX = bcsrNoPad.blockPointer[blockY]; blockX < bcsrNoPad.blockPointer[blockY + 1]; blockX++) {
                 startBlock = blockX * arr.blockSizeY;
                 for (uint32_t idCol = bcsrNoPad.pointer[startBlock + blockRow]; idCol < bcsrNoPad.pointer[startBlock + blockRow + 1]; idCol++) {
                     csr.indices[nnzCount++] = bcsrNoPad.indices[idCol];
@@ -391,18 +328,20 @@ void bcsc2cscNoPad(const MatrixInfo& arr, const BSXNoPad& bcscNoPad, CSX& csc)
  * Convert bcsr or bcsc to its non-blocked version
  *
  */
-void mm2csr(char argc, char* argv, CSX& csr, MatrixInfo& arr)
+void mm2csr(char* argv, CSX& csr, MatrixInfo& arr)
 {
     std::vector<uint32_t> cooRows;
     std::vector<uint32_t> cooCols;
-    mm2coo(argc, argv, cooRows, cooCols, arr);
+    mm2coo(argv, cooRows, cooCols, arr);
+    // printVector(cooRows, " ");
+    // printVector(cooCols, " ");
     coo2csr(arr, cooRows, cooCols, csr);
 }
 
-void mm2csc(char argc, char* argv, CSX& csc, MatrixInfo& arr)
+void mm2csc(char* argv, CSX& csc, MatrixInfo& arr)
 {
     std::vector<uint32_t> cooRows;
     std::vector<uint32_t> cooCols;
-    mm2coo(argc, argv, cooRows, cooCols, arr);
+    mm2coo(argv, cooRows, cooCols, arr);
     coo2csc(arr, cooRows, cooCols, csc);
 }

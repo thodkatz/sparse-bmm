@@ -52,11 +52,11 @@ void coo2csc(const MatrixInfo& arr,
              const std::vector<uint32_t>& cooCols,
              CSX& csc);
 
-void mm2coo(int argc, char* argv, std::vector<uint32_t>& cooRows, std::vector<uint32_t>& cooCols, MatrixInfo& arr);
+void mm2coo(char* argv, std::vector<uint32_t>& cooRows, std::vector<uint32_t>& cooCols, MatrixInfo& arr);
 
-void mm2csr(char argc, char* argv, CSX& csr, MatrixInfo& arr);
+void mm2csr(char* argv, CSX& csr, MatrixInfo& arr);
 
-void mm2csc(char argc, char* argv, CSX& csc, MatrixInfo& arr);
+void mm2csc(char* argv, CSX& csc, MatrixInfo& arr);
 
 /* ----------------------- Padding Data Structure---------------------- */
 void csr2bcsrPad(MatrixInfo& arr, const CSX& csr, BSXPad& bcsr);

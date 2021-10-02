@@ -1,5 +1,40 @@
 #include <fstream>
+#include <iostream>
+#include <algorithm>
+#include "utils.hpp"
 #include "sparsetools.hpp"
+
+void toDense(CSX csx, uint32_t rows, uint32_t cols, sparseType type, uint32_t pointerOffset, uint32_t indicesOffset)
+{
+    for(auto& i : csx.pointer) {
+        i-=pointerOffset;
+    }
+
+    for(auto& i : csx.indices) {
+        i-=indicesOffset;
+    }
+
+    if (type == sparseType::CSC) {
+        std::swap(rows, cols);
+    }
+
+    std::vector<std::vector<uint32_t>> dense(rows, std::vector<uint32_t>(cols, 0));
+    for (uint32_t i = 0; i < rows; i++) {
+        for (uint32_t j = csx.pointer[i]; j < csx.pointer[i + 1]; j++) {
+            dense[i][csx.indices[j]] = 1;
+        }
+    }
+
+    std::cout << std::endl;
+    for (uint32_t i = 0; i < rows; i++) {
+        for (uint32_t j = 0; j < cols; j++) {
+            uint32_t value = (type == sparseType::CSR) ? dense[i][j] : dense[j][i];
+            std::cout << value;
+            std::string delimiter = (j != cols - 1) ? " " : "\n";
+            std::cout << delimiter;
+        }
+    }
+}
 
 void csxWriteFile(CSX& csx, std::string filename)
 {
@@ -21,24 +56,4 @@ void csxWriteFile(CSX& csx, std::string filename)
         }
     }
     csxMulFile.close();
-}
-
-/**
- * source: https://stackoverflow.com/questions/27131628/check-whether-two-elements-have-a-common-element-in-c/27132690
- */
-template< class ForwardIt1, class ForwardIt2 >
-bool has_common_elements( ForwardIt1 first, ForwardIt1 last, ForwardIt2 s_first, ForwardIt2 s_last )
-{
-    auto it=first;
-    auto s_it=s_first;
-    while(it<last && s_it<s_last)
-    {
-        if(*it==*s_it)
-        {
-            return true;
-        }
-
-        *it<*s_it ? ++it : ++s_it;  //increase the smaller of both
-    }
-    return false;
 }
