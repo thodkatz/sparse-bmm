@@ -219,12 +219,14 @@ void csr2bcsrNoPad(MatrixInfo& arr, const CSX& csr, BSXNoPad& bcsr)
     //uint32_t currentBlock  = 0;
     uint32_t emptyRow      = 0;
     uint32_t nonzeroBlocks = 0;
+    uint32_t blockColOffset = 0;
     bool isFound           = false;
     for (uint32_t blockY = 0; blockY < arr.numBlockY; blockY++) {
         for (uint32_t blockX = 0; blockX < arr.numBlockX; blockX++) {
             emptyRow = 0;
             for (uint32_t i = blockY * arr.blockSizeY, blockRow = 0; i < (blockY + 1) * arr.blockSizeY; i++, blockRow++) {
                 //currentBlock = blockY * arr.numBlockX + blockX;
+                blockColOffset = blockX*arr.blockSizeX;
 
                 // padding when out of bounds
                 if (i >= arr.nRow) {
@@ -243,7 +245,7 @@ void csr2bcsrNoPad(MatrixInfo& arr, const CSX& csr, BSXNoPad& bcsr)
                         break;
                     }
                     if (blockX * arr.blockSizeX <= csr.indices[j]) {
-                        bcsr.indices[nnz++] = csr.indices[j];
+                        bcsr.indices[nnz++] = csr.indices[j] - blockColOffset;
                         isFound             = true;
                     }
                 }
@@ -298,12 +300,14 @@ void bcsr2csrNoPad(const MatrixInfo& arr, const BSXNoPad& bcsrNoPad, CSX& csr)
     uint32_t nnzCount   = 0;
     uint32_t countRow   = 0;
     uint32_t startBlock = 0;
+    uint32_t blockColOffset = 0;
     for (uint32_t blockY = 0; blockY < arr.numBlockY; blockY++) {
         for (uint32_t blockRow = 0; blockRow < arr.blockSizeY && countRow < arr.nRow; blockRow++) {
             for (uint32_t blockX = bcsrNoPad.blockPointer[blockY]; blockX < bcsrNoPad.blockPointer[blockY + 1]; blockX++) {
                 startBlock = blockX * arr.blockSizeY;
+                blockColOffset = bcsrNoPad.idBlock[blockX]*arr.blockSizeX;
                 for (uint32_t idCol = bcsrNoPad.pointer[startBlock + blockRow]; idCol < bcsrNoPad.pointer[startBlock + blockRow + 1]; idCol++) {
-                    csr.indices[nnzCount++] = bcsrNoPad.indices[idCol];
+                    csr.indices[nnzCount++] = bcsrNoPad.indices[idCol] + blockColOffset;
                 }
             }
             csr.pointer[++countRow] = nnzCount;

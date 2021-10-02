@@ -3,6 +3,7 @@
 #include <fstream>
 #include <chrono>
 #include <cmath>
+#include <random>
 #include <algorithm>
 #include "sparsetools.hpp"
 #include "utils.hpp"
@@ -28,6 +29,10 @@ void checkBlocking(const CSX& reference, const CSX& got)
         if (reference.pointer[i] != got.pointer[i]) {
             std::cout << "Test Failed" << std::endl;
             std::cout << "Pointers mismatch" << std::endl;
+            std::cout << "Expected";
+            printVector(reference.pointer, " ");
+            std::cout << "Got";
+            printVector(got.pointer, " ");
             exit(-1);
         }
     }
@@ -37,7 +42,12 @@ void checkBlocking(const CSX& reference, const CSX& got)
         for (uint32_t j = reference.pointer[i]; j < reference.pointer[i + 1]; j++) {
             if (reference.indices[j] != got.indices[j]) {
                 std::cout << "Test Failed" << std::endl;
-                std::cout << "Pointers mismatch" << std::endl;
+                std::cout << "Indices mismatch" << std::endl;
+                std::cout << "Expected";
+                printVector(reference.indices, " ");
+                std::cout << "Got";
+                printVector(got.indices, " ");
+
                 exit(-1);
             }
         }
@@ -108,6 +118,7 @@ int main(int argc, char* argv[])
     }
     std::cout << "C.nnz: " << csrCmask.indices.size() << std::endl;
 
+;
     /* --- Masked Blocked CSR Matrix-Matrix Multiplication -- */
 
     /* --- Write results for validation with python script -- */
@@ -156,8 +167,8 @@ int main(int argc, char* argv[])
 
     A.blockSizeX = std::min((uint32_t)(A.nRow / log10(A.nRow)), A.nRow / 2);
     A.blockSizeY = std::min((uint32_t)(A.nCol / log10(A.nCol)), A.nCol / 2);
-    //A.blockSizeX = 3; 
-    //A.blockSizeY = 2; 
+    // A.blockSizeX = 3;
+    // A.blockSizeY = 2;
     B.blockSizeX = A.blockSizeX;
     B.blockSizeY = A.blockSizeY;
     F.blockSizeX = A.blockSizeX;
@@ -169,23 +180,8 @@ int main(int argc, char* argv[])
     {
         Timer time("Time Blocking\n");
         csr2bcsrNoPad(A, csrA, bcsrA);
-        // std::cout << "\nBlocking No Pad" << std::endl;
-        // printVector<uint32_t>(bcsrANoPad.indices," ");
-        // printVector<uint32_t>(bcsrANoPad.pointer," ");
-        // printVector<uint32_t>(bcsrANoPad.idBlock," ");
-        // printVector<uint32_t>(bcsrANoPad.blockPointer," ");
-
         csc2bcscNoPad(B, cscB, bcscB);
-        // printVector<uint32_t>(bcscBNoPad.indices," ");
-        // printVector<uint32_t>(bcscBNoPad.pointer," ");
-        // printVector<uint32_t>(bcscBNoPad.idBlock," ");
-        // printVector<uint32_t>(bcscBNoPad.blockPointer," ");
-
         csr2bcsrNoPad(F, csrF, bcsrF);
-        // printVector(bcsrF.indices," ");
-        // printVector(bcsrF.pointer," ");
-        // printVector(bcsrF.idBlock," ");
-        // printVector(bcsrF.blockPointer," ");
     }
 
     std::cout << "A: "
@@ -219,15 +215,61 @@ int main(int argc, char* argv[])
     checkBlocking(csrF, csrFrevert);
 
     std::cout << "\nA dense:\n";
-    toDense(csrA, A.nRow, A.nCol, sparseType::CSR,0,0);
+    toDense(csrA, A.nRow, A.nCol, sparseType::CSR, 0, 0);
+    // printVector(bcsrA.blockPointer, " ");
+    // printVector(bcsrA.idBlock, " ");
+    // printVector(bcsrA.pointer, " ");
+    // printVector(bcsrA.indices, " ");
 
     std::cout << "\nB dense:\n";
-    toDense(cscB, B.nRow, B.nCol, sparseType::CSC,0,0);
+    toDense(cscB, B.nRow, B.nCol, sparseType::CSC, 0, 0);
+    // printVector(bcscB.blockPointer, " ");
+    // printVector(bcscB.idBlock, " ");
+    // printVector(bcscB.pointer, " ");
+    // printVector(bcscB.indices, " ");
 
     std::cout << "\nF dense:\n";
-    toDense(csrF, F.nRow, F.nCol, sparseType::CSR,0,0);
+    toDense(csrF, F.nRow, F.nCol, sparseType::CSR, 0, 0);
+    // printVector(bcsrF.blockPointer, " ");
+    // printVector(bcsrF.idBlock, " ");
+    // printVector(bcsrF.pointer, " ");
+    // printVector(bcsrF.indices, " ");
 
-    BSXNoPad ret = bmmBlock(F,bcsrA,bcscB,bcsrF);
+#ifndef BMM_BLOCK
+    BSXNoPad ret = bmmBlock(F, bcsrA, bcscB, bcsrF);
+
+    std::cout << "\nBlocked BMM result";
+    CSX csrRet;
+    bcsr2csrNoPad(F, ret, csrRet);
+    toDense(csrRet, F.nRow, F.nCol, sparseType::CSR, 0, 0);
+
+    std::cout << "Correct result";
+    toDense(csrCmask, F.nRow, F.nCol, sparseType::CSR, 0, 0);
+
+#endif
+
+#ifdef CHECK_INTERSECTION
+    /* ------------- Check indices intersection ------------- */
+    std::cout << std::endl;
+    std::srand(unsigned(std::time(nullptr)));
+    std::vector<int> vec1(10);
+    std::generate(begin(vec1), end(vec1), std::rand);
+    std::for_each(vec1.begin(), vec1.end(), [](int& a) { a %= 10; });
+    std::for_each(vec1.begin(), vec1.end(), [](int& a) { std::cout << a << " "; });
+    std::vector<int> vec2 = vec1;
+    unsigned seed         = std::chrono::system_clock::now().time_since_epoch().count();
+    std::shuffle(vec2.begin(), vec2.end(), std::default_random_engine(seed));
+    vec2.resize(5);
+    std::cout << std::endl;
+    std::for_each(vec2.begin(), vec2.end(), [](int& a) { std::cout << a << " "; });
+    std::cout << std::endl;
+
+    std::vector<uint32_t> indicesOfCommon;
+    indicesIntersection(vec1.begin(), vec1.end(), vec2.begin(), vec2.end(), std::back_inserter(indicesOfCommon));
+
+    printVector(indicesOfCommon, " ");
+
+#endif
 
 #ifdef CHECK
     /* ----------------- Check updateMask() ----------------- */

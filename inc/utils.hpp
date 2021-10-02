@@ -61,28 +61,11 @@ bool hasCommon(InputIterator1 first1, InputIterator1 last1, InputIterator2 first
     return false;
 }
 
-template <class T>
-void printVector(const std::vector<T>& arr, std::string formatter)
-{
-    std::cout << std::endl;
-    for (const auto& i : arr) {
-        std::cout << i << formatter;
-    }
-    std::cout << std::endl;
-};
 
-template <class T>
-void printCoo(std::vector<T>& rows, std::vector<T>& cols)
-{
-    if (rows.size() != cols.size())
-        return;
-
-    std::cout << std::endl;
-    for (T i = 0; i < rows.size(); i++) {
-        std::cout << rows[i] << " " << cols[i] << std::endl;
-    }
-    std::cout << std::endl;
-};
+/* ------------------- Print utilities ------------------ */
+void printVector(const std::vector<uint32_t> arr, std::string formatter);
+void printCSX(const CSX& csx);
+void printCoo(std::vector<uint32_t>& rows, std::vector<uint32_t>& cols);
 
 /**
  *  Write \p csr data structure to file with name \p filename

@@ -15,9 +15,9 @@ OutputIterator indicesIntersection(InputIterator1 first1, InputIterator1 last1, 
         else if (*first2 < *first1)
             ++first2;
         else {
-            *result = std::distance(first1, first1Start);
+            *result = first1 - first1Start;
             ++result;
-            *result = std::distance(first2, first2Start);
+            *result = first2 - first2Start;
             ++result;
             ++first1;
             ++first2;
@@ -38,7 +38,7 @@ CSX bmmPerBlock(const BSXNoPad& csrA, const BSXNoPad& cscB, const CSX& csrF, uin
 
 BSXNoPad bmmBlock(const MatrixInfo& F, const BSXNoPad& bcsrA, const BSXNoPad& bcscB, const BSXNoPad& bcsrF);
 
-void appendResult(BSXNoPad& result, const CSX& csrResultBlock);
+void appendResult(BSXNoPad& result, const CSX& csrResultBlock, uint32_t blockSizeY);
 
 CSX subBlockMul(const BSXNoPad& bcsrA,
                 const BSXNoPad& bcscB,
@@ -56,8 +56,8 @@ CSX updateBlockC(const CSX& current, const CSX& old);
 
 CSX fillMaskOnes(uint32_t blockSizeY, uint32_t blockSizeX);
 
-void getBlock(const BSXNoPad& bcsx, CSX& block, uint32_t blocksPassed, uint32_t blockSize);
+void getBlock(const BSXNoPad& bcsx, CSX& block, uint32_t nnzBlocksPassed, uint32_t blockSizeY);
 
-void removeOffset(CSX& csrBlockMask, uint32_t pointerOffset, uint32_t indicesOffset);
+void removeOffset(CSX& csrBlockMask, uint32_t pointerOffset);
 
 #endif
