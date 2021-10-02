@@ -14,7 +14,7 @@ CSX csxMul(const CSX& csrA, const CSX& cscB)
 
     CSX mulResult;
     mulResult.pointer.resize(rows + 1);
-    mulResult.pointer.push_back(0);
+    mulResult.pointer[0];
 
     uint32_t nnz = 0;
     for (uint32_t i = 0, idxCol = 0, idxRow = 0; i < rows; i++) {
@@ -56,7 +56,7 @@ CSX csxMulSTL(const CSX& csrA, const CSX& cscB)
 
     CSX mulResult;
     mulResult.pointer.resize(rows + 1);
-    mulResult.pointer.push_back(0);
+    mulResult.pointer[0] = 0;
 
     uint32_t nnz        = 0;
     uint32_t idStartCol = 0;
@@ -93,7 +93,7 @@ CSX csxMul(const CSX& csrA, const CSX& cscB, const CSX& csrF)
 
     CSX mulResult;
     mulResult.pointer.resize(rows + 1);
-    mulResult.pointer.push_back(0);
+    mulResult.pointer[0];
 
     uint32_t nnz        = 0;
     uint32_t idStartCol = 0;
@@ -256,12 +256,21 @@ void appendResult(BSXNoPad& result, const CSX& csrResultBlock,uint32_t blockSize
 {
     uint32_t offset = result.pointer[result.pointer.size()-1];
 
+    //std::cout << "\nAPPENDING\nBefore";
+    //printVector(result.pointer, " ");
+    //printVector(result.indices, " ");
+
+
     // append pointer and indices content
     result.pointer.insert(result.pointer.end(), csrResultBlock.pointer.begin() + 1, csrResultBlock.pointer.end());
     result.indices.insert(result.indices.end(), csrResultBlock.indices.begin(), csrResultBlock.indices.end());
 
     // add offset to pointer
     std::for_each(result.pointer.end()-blockSizeY,result.pointer.end(),[offset] (uint32_t& i) {i+=offset;});
+
+    //std::cout << "\nAfter";
+    //printVector(result.pointer, " ");
+    //printVector(result.indices, " ");
 }
 
 /**

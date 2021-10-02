@@ -11,7 +11,7 @@
 
 using namespace std::chrono;
 
-void checkBlocking(const CSX& reference, const CSX& got)
+void isEqualCSX(const CSX& reference, const CSX& got)
 {
     uint32_t n = reference.pointer.size() - 1;
     /* ------------------ Check dimensions ------------------ */
@@ -53,7 +53,7 @@ void checkBlocking(const CSX& reference, const CSX& got)
         }
     }
 
-    std::cout << "Blocking Test Passed!" << std::endl;
+    std::cout << "Test Passed!" << std::endl;
 }
 
 int main(int argc, char* argv[])
@@ -210,9 +210,9 @@ int main(int argc, char* argv[])
     std::cout << "\nValidation" << std::endl;
 
     /* ---------- Validation Blocked data structure --------- */
-    checkBlocking(csrA, csrArevert);
-    checkBlocking(cscB, cscBrevert);
-    checkBlocking(csrF, csrFrevert);
+    isEqualCSX(csrA, csrArevert);
+    isEqualCSX(cscB, cscBrevert);
+    isEqualCSX(csrF, csrFrevert);
 
     std::cout << "\nA dense:\n";
     toDense(csrA, A.nRow, A.nCol, sparseType::CSR, 0, 0);
@@ -238,13 +238,21 @@ int main(int argc, char* argv[])
 #ifndef BMM_BLOCK
     BSXNoPad ret = bmmBlock(F, bcsrA, bcscB, bcsrF);
 
+    MatrixInfo C;
+    C = F;
+    C.nnz = ret.indices.size();
+
     std::cout << "\nBlocked BMM result";
     CSX csrRet;
-    bcsr2csrNoPad(F, ret, csrRet);
+    bcsr2csrNoPad(C, ret, csrRet);
     toDense(csrRet, F.nRow, F.nCol, sparseType::CSR, 0, 0);
+    printCSX(csrRet);
 
-    std::cout << "Correct result";
+    std::cout << "\nCorrect result";
     toDense(csrCmask, F.nRow, F.nCol, sparseType::CSR, 0, 0);
+    printCSX(csrCmask);
+
+    isEqualCSX(csrCmask,csrRet);
 
 #endif
 

@@ -6,14 +6,14 @@ MATRICES=$PROJECT/matrices
 figlet Build | lolcat
 cd ../ && make serial
 
-#A="A.mtx"
-#B="B.mtx"
-#F="F.mtx"
+A="A.mtx"
+B="B.mtx"
+F="F.mtx"
 
 #A="com-Youtube/com-Youtube.mtx"
 #A="pli/pli.mtx"
 #A="jgl009/jgl009.mtx"
-A="mycielskian3/mycielskian3.mtx"
+#A="mycielskian3/mycielskian3.mtx"
 B=$A
 F=$A
 

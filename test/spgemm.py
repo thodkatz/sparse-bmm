@@ -53,7 +53,7 @@ colF = colF - 1
 
 cooA = coo_matrix((np.ones(nnzA), (rowA,colA)), shape=(numRowA, numColA))
 cooB = coo_matrix((np.ones(nnzB), (rowB,colB)), shape=(numRowB, numColB))
-cooF = coo_matrix((np.ones(nnzF), (rowB,colF)), shape=(numRowF, numColF))
+cooF = coo_matrix((np.ones(nnzF), (rowF,colF)), shape=(numRowF, numColF))
 
 csrA = cooA.tocsr()
 csrB = cooB.tocsr()
@@ -112,7 +112,7 @@ if(not np.array_equiv(csrMul.indptr,csrMulRef.indptr)):
 
 if(not np.array_equiv(csrMul.indices,csrMulRef.indices)):
     print(colored("Test failed :(","red", attrs=["bold"]))
-    print("Pointer arrays are different")
+    print("Indices arrays are different")
     exit()
 
 print(colored("Hooray! Test passed :)", "green", attrs=["bold"]))
