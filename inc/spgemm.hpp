@@ -58,6 +58,4 @@ CSX fillMaskOnes(uint32_t blockSizeY, uint32_t blockSizeX);
 
 void getBlock(const BSXNoPad& bcsx, CSX& block, uint32_t nnzBlocksPassed, uint32_t blockSizeY);
 
-void removeOffset(CSX& csrBlockMask, uint32_t pointerOffset);
-
 #endif
