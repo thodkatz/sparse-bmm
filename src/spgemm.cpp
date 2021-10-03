@@ -5,6 +5,12 @@
 #include "sparsetools.hpp"
 #include "utils.hpp"
 
+#ifdef OPENMP
+#include <cstdlib>
+#include <unistd.h>
+#include <omp.h>
+#endif
+
 /**
  *  C = A * B, where A CSR, B CSC and C CSR format
  */
@@ -172,18 +178,42 @@ CSX bmmPerBlock(const BSXNoPad& csrA, const BSXNoPad& cscB, const CSX& csrF, uin
  */
 BSXNoPad bmmBlock(const MatrixInfo& F, const BSXNoPad& bcsrA, const BSXNoPad& bcscB, const BSXNoPad& bcsrF)
 {
-    // CSX csrResultBlock;
+#ifdef OPENMP
+    if (std::getenv("OMP_NUM_THREADS") == nullptr) {
+        std::cout << "Environment variable not found\n";
+        std::cout << "Usage: export OMP_NUM_THREADS=<number>\n";
+        exit(-1);
+    }
+    uint32_t numOfThreads = std::stoi(std::getenv("OMP_NUM_THREADS"));
+
+    std::vector<BSXNoPad> results(numOfThreads);
+    for_each(results.begin(), results.end(), [](BSXNoPad& i) { i.pointer.push_back(0); });
+    for_each(results.begin(), results.end(), [](BSXNoPad& i) { i.blockPointer.push_back(0); });
+
+    std::vector<uint32_t> nnzBlocks(numOfThreads);
+#else
     BSXNoPad result;
     result.pointer.push_back(0);
     result.blockPointer.push_back(0);
+    uint32_t nnzBlocks = 0;
+#endif
 
-    uint32_t indexBlockStartCol = 0;
-    uint32_t indexBlockEndCol   = 0;
-    uint32_t indexBlockStartRow = 0;
-    uint32_t indexBlockEndRow   = 0;
-    uint32_t nnzBlocks          = 0;
+#ifdef OPENMP
+#pragma omp parallel for schedule(static)
+#endif
     for (uint32_t blockY = 0; blockY < F.numBlockY; blockY++) {
-        for (uint32_t indexBlockX = bcsrF.blockPointer[blockY], idBlockCol = 0; indexBlockX < bcsrF.blockPointer[blockY + 1]; indexBlockX++) {
+        uint32_t indexBlockStartCol = 0;
+        uint32_t indexBlockEndCol   = 0;
+        uint32_t indexBlockStartRow = 0;
+        uint32_t indexBlockEndRow   = 0;
+
+#ifdef OPENMP
+        uint32_t tid = omp_get_thread_num();
+#endif
+
+        uint32_t idBlockCol = 0;
+        for (uint32_t indexBlockX = bcsrF.blockPointer[blockY]; indexBlockX < bcsrF.blockPointer[blockY + 1]; indexBlockX++) {
+
             idBlockCol = bcsrF.idBlock[indexBlockX];
 
             indexBlockStartCol = bcsrA.blockPointer[blockY];
@@ -203,17 +233,69 @@ BSXNoPad bmmBlock(const MatrixInfo& F, const BSXNoPad& bcsrA, const BSXNoPad& bc
 
             // check if empty block
             if (csrResultBlock.pointer[F.blockSizeY] != 0) {
+#ifdef OPENMP
+                results[tid].idBlock.push_back(idBlockCol);
+                appendResult(results[tid], csrResultBlock, F.blockSizeY);
+                nnzBlocks[tid]++;
+#else
                 result.idBlock.push_back(idBlockCol);
                 appendResult(result, csrResultBlock, F.blockSizeY);
                 nnzBlocks++;
+#endif
             }
         }
+#ifdef OPENMP
+        results[tid].blockPointer.push_back(nnzBlocks[tid]);
+#else
         result.blockPointer.push_back(nnzBlocks);
+#endif
     }
+
+#ifdef OPENMP
+    // concatenate BSX per thread to a single one
+    BSXNoPad result = concatBSX(results);
+#endif
 
     return result;
 }
 
+/**
+ *  Take a vector of BSX and return one unified. Assume that vector is ordered with respect blockY to handle offset requirements for pointers arrays.
+ */
+BSXNoPad concatBSX(std::vector<BSXNoPad>& result)
+{
+    BSXNoPad ret;
+    ret.blockPointer.push_back(0);
+    ret.pointer.push_back(0);
+
+    uint32_t offsetPointer      = 0;
+    uint32_t offsetBlockPointer = 0;
+    uint32_t lenPointer         = 0;
+    uint32_t lenBlockPointer    = 0;
+
+    for (uint32_t i = 0; i < result.size(); i++) {
+        if (i > 0) {
+            lenBlockPointer    = result[i - 1].blockPointer.size();
+            offsetBlockPointer = result[i - 1].blockPointer[lenBlockPointer - 1];
+            for_each(result[i].blockPointer.begin(), result[i].blockPointer.end(), [offsetBlockPointer](uint32_t& i) { i += offsetBlockPointer; });
+
+            lenPointer    = result[i - 1].pointer.size();
+            offsetPointer = result[i - 1].pointer[lenPointer - 1];
+            for_each(result[i].pointer.begin(), result[i].pointer.end(), [offsetPointer](uint32_t& i) { i += offsetPointer; });
+        }
+        ret.blockPointer.insert(
+            ret.blockPointer.end(), make_move_iterator(result[i].blockPointer.begin() + 1), make_move_iterator(result[i].blockPointer.end()));
+        ret.idBlock.insert(ret.idBlock.end(), make_move_iterator(result[i].idBlock.begin()), make_move_iterator(result[i].idBlock.end()));
+        ret.pointer.insert(ret.pointer.end(), make_move_iterator(result[i].pointer.begin() + 1), make_move_iterator(result[i].pointer.end()));
+        ret.indices.insert(ret.indices.end(), make_move_iterator(result[i].indices.begin()), make_move_iterator(result[i].indices.end()));
+    }
+
+    return ret;
+}
+
+/**
+ * Given a BSX format, return an isolated block in CSX format
+ */
 void getBlock(const BSXNoPad& bcsx, CSX& block, uint32_t nnzBlocksPassed, uint32_t blockSizeY)
 {
     uint32_t startPointer = nnzBlocksPassed * blockSizeY;
@@ -229,7 +311,7 @@ void getBlock(const BSXNoPad& bcsx, CSX& block, uint32_t nnzBlocksPassed, uint32
 }
 
 /**
- *  Outer block level
+ * Append a CSX format to BSX
  */
 void appendResult(BSXNoPad& result, const CSX& csrResultBlock, uint32_t blockSizeY)
 {
@@ -243,7 +325,7 @@ void appendResult(BSXNoPad& result, const CSX& csrResultBlock, uint32_t blockSiz
 }
 
 /**
- *  Outer block level
+ * Take the blocks of a row-blocked and a column-blocked and perform the multiplication
  */
 CSX subBlockMul(const BSXNoPad& bcsrA,
                 const BSXNoPad& bcscB,
@@ -256,6 +338,8 @@ CSX subBlockMul(const BSXNoPad& bcsrA,
                 uint32_t indexBlockEndRow)
 {
     // find the indices of the common elements
+    // pairs are stored in a contiguous manner
+    // e.g. (1,2),(3,3)
     std::vector<uint32_t> indicesOfCommon;
     indicesIntersection(bcsrA.idBlock.begin() + indexBlockStartCol,
                         bcsrA.idBlock.begin() + indexBlockEndCol,
@@ -269,6 +353,8 @@ CSX subBlockMul(const BSXNoPad& bcsrA,
 
     uint32_t pointerOffsetA = 0;
     uint32_t pointerOffsetB = 0;
+
+    // for every pair of aligned blocks perform the bmm
     for (uint32_t i = 0, first = 0, second = 0; i < indicesOfCommon.size(); i += 2) {
         first          = indicesOfCommon[i];
         second         = indicesOfCommon[i + 1];
@@ -283,8 +369,9 @@ CSX subBlockMul(const BSXNoPad& bcsrA,
         }
         csrBlockCnew = bmmPerBlock(bcsrA, bcscB, csrMask, pointerOffsetA, pointerOffsetB, blockSizeY);
 
-        if (i != indicesOfCommon.size() - 2) { // change this to 2
-            csrMask = updateMask(csrMask, csrBlockCnew); // no need to calculate last iteration
+        // no need update mask last iteration
+        if (i != indicesOfCommon.size() - 2) {
+            csrMask = updateMask(csrMask, csrBlockCnew);
         }
 
         csrBlockCnew = updateBlockC(csrBlockCnew, csrBlockCold);
@@ -295,8 +382,6 @@ CSX subBlockMul(const BSXNoPad& bcsrA,
 }
 
 /**
- *  Inner block level
- *
  *  Update the mask based on the previous result and the new one
  */
 CSX updateMask(const CSX& csrNewMask, const CSX& csrOldMask)
@@ -324,8 +409,6 @@ CSX updateMask(const CSX& csrNewMask, const CSX& csrOldMask)
 }
 
 /**
- *  Inner block level
- *
  *  Concatenate two CSR blocks
  *
  *  We expect the new CSR block to have different values of indices from the old CSR due to masking (check only the false (0) coordinates)
@@ -345,10 +428,11 @@ CSX updateBlockC(const CSX& csrNew, const CSX& csrOld)
 
         // empty lines
         // check if there is any performance difference
-        // if (csrNew.pointer[i] == csrNew.pointer[i + 1] && csrOld.pointer[i] == csrOld.pointer[i + 1]) {
-        //     ret.pointer[i+1] = nnz;
-        //     continue;
-        // }
+        // Update: there is a slight improvement including this check
+        if (csrNew.pointer[i] == csrNew.pointer[i + 1] && csrOld.pointer[i] == csrOld.pointer[i + 1]) {
+            ret.pointer[i + 1] = nnz;
+            continue;
+        }
 
         prevSize = ret.indices.size();
         std::merge(csrNew.indices.begin() + csrNew.pointer[i],
@@ -364,6 +448,9 @@ CSX updateBlockC(const CSX& csrNew, const CSX& csrOld)
     return ret;
 }
 
+/**
+ * Fill a CSX format with ones
+ */
 CSX fillMaskOnes(uint32_t blockSizeY, uint32_t blockSizeX)
 {
     CSX csrMask;

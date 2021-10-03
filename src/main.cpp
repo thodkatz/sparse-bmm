@@ -66,6 +66,12 @@ int main(int argc, char* argv[])
     // A.blockSizeY = std::min((uint32_t)(A.nCol / log10(A.nCol)), A.nCol / 2);
     A.blockSizeX = std::min((uint32_t)(A.nRow / log2(A.nRow)), A.nRow / 2);
     A.blockSizeY = std::min((uint32_t)(A.nCol / log2(A.nCol)), A.nCol / 2);
+    //A.blockSizeX = std::min((uint32_t)(A.nRow / sqrt(A.nRow)), A.nRow / 2);
+    //A.blockSizeY = std::min((uint32_t)(A.nCol / sqrt(A.nCol)), A.nCol / 2);
+    //A.blockSizeX = (uint32_t)(A.nRow / pow(A.nRow,1.0/4.0));
+    //A.blockSizeY = (uint32_t)(A.nCol / pow(A.nCol,1.0/4.0));
+    //A.blockSizeX = 2;
+    //A.blockSizeY = 2;
     B.blockSizeX = A.blockSizeX;
     B.blockSizeY = A.blockSizeY;
     F.blockSizeX = A.blockSizeX;
@@ -123,6 +129,16 @@ int main(int argc, char* argv[])
         Timer time("Time BLOCK-BMM result convert BSX->CSX\n");
         bcsr2csrNoPad(C, ret, csrRet);
     }
+
+#ifdef DEBUG
+    std::cout << "\nBlocked BMM result";
+    toDense(csrRet, F.nRow, F.nCol, sparseType::CSR, 0, 0);
+    //printCSX(csrRet);
+
+    std::cout << "\nCorrect result";
+    toDense(csrCmask, F.nRow, F.nCol, sparseType::CSR, 0, 0);
+    //printCSX(csrCmask);
+#endif
 
     std::cout << "\nBlock BMM validation\n";
     isEqualCSX(csrCmask, csrRet);

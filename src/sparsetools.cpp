@@ -216,7 +216,6 @@ void csr2bcsrNoPad(MatrixInfo& arr, const CSX& csr, BSXNoPad& bcsr)
 
     bcsr.blockPointer[0]   = 0;
     uint32_t nnz           = 0;
-    //uint32_t currentBlock  = 0;
     uint32_t emptyRow      = 0;
     uint32_t nonzeroBlocks = 0;
     uint32_t blockColOffset = 0;
@@ -225,16 +224,12 @@ void csr2bcsrNoPad(MatrixInfo& arr, const CSX& csr, BSXNoPad& bcsr)
         for (uint32_t blockX = 0; blockX < arr.numBlockX; blockX++) {
             emptyRow = 0;
             for (uint32_t i = blockY * arr.blockSizeY, blockRow = 0; i < (blockY + 1) * arr.blockSizeY; i++, blockRow++) {
-                //currentBlock = blockY * arr.numBlockX + blockX;
                 blockColOffset = blockX*arr.blockSizeX;
 
                 // padding when out of bounds
                 if (i >= arr.nRow) {
                     bcsr.pointer.push_back(nnz);
                     emptyRow++;
-                    // std::cout << "\nEmpty " << emptyRow;
-                    // std::cout << "\nOut of bounds, Block Row" << blockRow;
-                    // printVector(bcsr.pointer, " ");
                     continue;
                 }
 
@@ -252,23 +247,14 @@ void csr2bcsrNoPad(MatrixInfo& arr, const CSX& csr, BSXNoPad& bcsr)
                 if (!isFound)
                     emptyRow++;
 
-                // std::cout << "\nEmpty " << emptyRow << std::endl;
-
                 bcsr.pointer.push_back(nnz);
-                // std::cout << "Block Row" << blockRow;
-                // printVector(bcsr.pointer, " ");
             } // filled (blockX,blockY)
 
             // empty block detected, remove the padding
             if (emptyRow == arr.blockSizeY) {
-                // std::cout << "Before";
-                // printVector(bcsr.pointer, " ");
                 bcsr.pointer.erase(bcsr.pointer.end() - arr.blockSizeY, bcsr.pointer.end());
-                // std::cout << "After";
-                // printVector(bcsr.pointer, " ");
             }
             else {
-                //bcsr.idBlock.push_back(currentBlock);
                 bcsr.idBlock.push_back(blockX);
                 nonzeroBlocks++;
             }
@@ -280,13 +266,9 @@ void csr2bcsrNoPad(MatrixInfo& arr, const CSX& csr, BSXNoPad& bcsr)
 void csc2bcscNoPad(MatrixInfo& arr, const CSX& csc, BSXNoPad& bcsc)
 {
     MatrixInfo& swapArr = arr;
-    swapArr.nRow        = arr.nCol;
-    swapArr.nCol        = arr.nRow;
-    swapArr.nnz         = arr.nnz;
-    swapArr.blockSizeX  = arr.blockSizeY;
-    swapArr.blockSizeY  = arr.blockSizeX;
-    swapArr.numBlockX   = arr.numBlockY;
-    swapArr.numBlockY   = arr.numBlockX;
+    std::swap(swapArr.nCol,swapArr.nRow);
+    std::swap(swapArr.blockSizeX,swapArr.blockSizeY);
+    std::swap(swapArr.numBlockX,swapArr.numBlockY);
 
     csr2bcsrNoPad(swapArr, csc, bcsc);
 }
@@ -317,15 +299,7 @@ void bcsr2csrNoPad(const MatrixInfo& arr, const BSXNoPad& bcsrNoPad, CSX& csr)
 
 void bcsc2cscNoPad(const MatrixInfo& arr, const BSXNoPad& bcscNoPad, CSX& csc)
 {
-    MatrixInfo swapArr;
-    swapArr.nRow       = arr.nCol;
-    swapArr.nCol       = arr.nRow;
-    swapArr.nnz        = arr.nnz;
-    swapArr.blockSizeX = arr.blockSizeY;
-    swapArr.blockSizeY = arr.blockSizeX;
-    swapArr.numBlockX  = arr.numBlockY;
-    swapArr.numBlockY  = arr.numBlockX;
-    bcsr2csrNoPad(swapArr, bcscNoPad, csc);
+    bcsr2csrNoPad(arr, bcscNoPad, csc);
 }
 
 /**

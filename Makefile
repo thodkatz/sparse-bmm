@@ -10,11 +10,11 @@ $(shell mkdir -p bin)
 serial: $(SRC)
 	$(CXX) $(CXXFLAGS) -DSERIAL $^ -I$(INC) -o bin/$@
 
-mpi: $(SRC)
-	$(MPICC) $(CXXFLAGS) -DMPI $^ -o bin/$@
+openmp: $(SRC)
+	$(CXX) $(CXXFLAGS) -fopenmp -DOPENMP $^ -I$(INC)  -o bin/$@
 
 hybrid: $(SRC)
-	$(MPICC) $(CXXFLAGS) -fopenmp -DHYBRID $^ -o bin/$@ 
+	$(CCMPI) $(CXXFLAGS) -fopenmp -DHYBRID $^ -I$(INC) -o bin/$@ 
 
 .PHONY: clean
 

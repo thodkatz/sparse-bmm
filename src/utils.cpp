@@ -49,11 +49,15 @@ void isEqualCSX(const CSX& reference, const CSX& got)
     if (reference.pointer.size() != got.pointer.size()) {
         std::cout << "Test Failed\n";
         std::cout << "Pointer dimension mismatch\n";
+        std::cout << "Expected: " << reference.pointer.size() << std::endl;
+        std::cout << "Got: " << got.pointer.size() << std::endl;
         exit(-1);
     }
     if (reference.indices.size() != got.indices.size()) {
         std::cout << "Test Failed\n";
         std::cout << "Indices dimension mismatch\n";
+        std::cout << "Expected: " << reference.indices.size() << std::endl;
+        std::cout << "Got: " << got.indices.size() << std::endl;
         exit(-1);
     }
 

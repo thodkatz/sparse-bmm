@@ -22,6 +22,7 @@ class MatrixInfo {
 };
 
 /**
+ * CSX stands for either CSR or CSC
  */
 class CSX {
   public:
