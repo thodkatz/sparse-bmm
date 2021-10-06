@@ -1,6 +1,6 @@
 CXX:=g++
 CCMPI:=mpic++
-CXXFLAGS:=-g -pedantic -Wall
+CXXFLAGS:=-g -O3 -pedantic -Wall
 
 SRC:=src/*.cpp
 INC:=inc

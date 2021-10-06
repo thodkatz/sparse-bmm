@@ -4,7 +4,7 @@ PROJECT=/home/tkatz/repos/sparse-bmm
 MATRICES=$PROJECT/matrices
 
 #target=("serial" "openmp")
-target=("serial")
+target=("hybrid")
 export OMP_NUM_THREADS=8
 
 for i in ${target[@]}; do
@@ -31,7 +31,11 @@ for i in ${target[@]}; do
     echo -e "\nFull file path matrix F: $FILEF"
     
     figlet Run | lolcat
-    ./bin/$i $FILEA $FILEB $FILEF
+    if [ $i=="hybrid" ]; then
+        mpirun --oversubscribe -n 2 ./bin/$i $FILEA $FILEB $FILEF
+    else
+        ./bin/$i $FILEA $FILEB $FILEF
+    fi
     
     figlet Validation | lolcat
     #cd test/ && python spgemm.py $FILEA $FILEB $FILEF && cd ../

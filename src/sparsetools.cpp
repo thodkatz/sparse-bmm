@@ -334,3 +334,32 @@ void mm2csc(char* argv, CSX& csc, MatrixInfo& arr)
     mm2coo(argv, cooRows, cooCols, arr);
     coo2csc(arr, cooRows, cooCols, csc);
 }
+
+void readInput(char* argv[], MatrixInfo& A, MatrixInfo& B, MatrixInfo& F, CSX& csrA, CSX& cscB, CSX& csrF)
+{
+    {
+        Timer time("Time converting input to CSX: \n");
+        mm2csr(argv[1], csrA, A);
+        mm2csc(argv[2], cscB, B);
+        mm2csr(argv[3], csrF, F);
+    }
+
+    std::cout << "A: Rows: " << A.nRow << ", "
+              << ", Cols: " << A.nCol << ", "
+              << ", nnz: " << A.nnz << std::endl;
+    std::cout << "B: Rows: " << B.nRow << ", "
+              << ", Cols: " << B.nCol << ", "
+              << ", nnz: " << B.nnz << std::endl;
+    std::cout << "F: Rows: " << F.nRow << ", "
+              << ", Cols: " << F.nCol << ", "
+              << ", nnz: " << F.nnz << std::endl;
+
+    if (A.nCol != B.nRow) {
+        std::cout << "Multiplication dimensions mismatch" << std::endl;
+        exit(-1);
+    }
+    if (F.nRow != A.nRow || F.nCol != B.nCol) {
+        std::cout << "Masked matrix dimensions mismatch" << std::endl;
+        exit(-1);
+    }
+}

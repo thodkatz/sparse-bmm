@@ -5,11 +5,11 @@ import numpy as np
 print("Creating random sparse coo matrix A,B,F .mtx format")
 print("Dir: $(PROJECT_ROOT)/matrices")
 
-nRowA,nColA = int(5e5),int(5e5)
+nRowA,nColA = int(5e2),int(5e2)
 nRowB,nColB = nColA,nRowA
 nRowF,nColF = nRowA,nColB
 
-d = 4;
+d = 1;
 den = d/nRowA;
 
 def printRowCol(name,nRow,nCol):

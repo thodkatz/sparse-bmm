@@ -18,40 +18,12 @@
 #define FROM_WORKERS 2
 #endif
 
-void print(std::vector<int>& arr) {
-    for(auto i : arr) {
+void print(std::vector<uint32_t>& arr)
+{
+    for (auto i : arr) {
         std::cout << i << " ";
     }
     std::cout << std::endl;
-}
-
-void readInput(char* argv[], MatrixInfo& A, MatrixInfo& B, MatrixInfo& F, CSX& csrA, CSX& cscB, CSX& csrF)
-{
-    {
-        Timer time("Time converting input to CSX: \n");
-        mm2csr(argv[1], csrA, A);
-        mm2csc(argv[2], cscB, B);
-        mm2csr(argv[3], csrF, F);
-    }
-
-    std::cout << "A: Rows: " << A.nRow << ", "
-              << ", Cols: " << A.nCol << ", "
-              << ", nnz: " << A.nnz << std::endl;
-    std::cout << "B: Rows: " << B.nRow << ", "
-              << ", Cols: " << B.nCol << ", "
-              << ", nnz: " << B.nnz << std::endl;
-    std::cout << "F: Rows: " << F.nRow << ", "
-              << ", Cols: " << F.nCol << ", "
-              << ", nnz: " << F.nnz << std::endl;
-
-    if (A.nCol != B.nRow) {
-        std::cout << "Multiplication dimensions mismatch" << std::endl;
-        exit(-1);
-    }
-    if (F.nRow != A.nRow || F.nCol != B.nCol) {
-        std::cout << "Masked matrix dimensions mismatch" << std::endl;
-        exit(-1);
-    }
 }
 
 int main(int argc, char* argv[])
@@ -84,9 +56,6 @@ int main(int argc, char* argv[])
     CSX csrA, cscB, csrF;
     uint32_t offsetRows = 0;
 
-    std::vector<int> testPointer;
-    std::vector<int> testIndices;
-
     if (rank == 0) {
         readInput(argv, A, B, F, csrA, cscB, csrF);
         uint32_t averageRows = A.nRow / numWorkers;
@@ -101,6 +70,7 @@ int main(int argc, char* argv[])
         uint32_t nnzF       = 0;
         uint32_t nnzOffsetA = 0;
         uint32_t nnzOffsetF = 0;
+        std::cout << "\nMASTER rank sending slices of A and F ...\n";
         for (uint32_t dest = 1; dest <= numWorkers; dest++) {
             rows = (dest <= extra) ? averageRows + 1 : averageRows;
             nnzA = csrA.pointer[rows] - csrA.pointer[offsetRows];
@@ -111,37 +81,38 @@ int main(int argc, char* argv[])
             MPI_Send(&nnzA, 1, MPI_UINT32_T, dest, FROM_MASTER, MPI_COMM_WORLD);
             MPI_Send(&nnzF, 1, MPI_UINT32_T, dest, FROM_MASTER, MPI_COMM_WORLD);
 
-            MPI_Send(&csrA.pointer + offsetRows, rows + 1, MPI_UINT32_T, dest, FROM_MASTER, MPI_COMM_WORLD);
-            MPI_Send(&csrA.indices + nnzOffsetA, nnzA, MPI_UINT32_T, dest, FROM_MASTER, MPI_COMM_WORLD);
+            {
+                Timer time("Sending csrA to worker:" + std::to_string(dest) + "\n");
+                MPI_Send(&csrA.pointer.front() + offsetRows, rows + 1, MPI_UINT32_T, dest, FROM_MASTER, MPI_COMM_WORLD);
+                MPI_Send(&csrA.indices.front() + nnzOffsetA, nnzA, MPI_UINT32_T, dest, FROM_MASTER, MPI_COMM_WORLD);
+            }
 
-            MPI_Send(&csrF.pointer + offsetRows, rows + 1, MPI_UINT32_T, dest, FROM_MASTER, MPI_COMM_WORLD);
-            MPI_Send(&csrF.indices + nnzOffsetF, nnzF, MPI_UINT32_T, dest, FROM_MASTER, MPI_COMM_WORLD);
+            {
+                Timer time("Sending csrF to worker:" + std::to_string(dest) + "\n");
+                MPI_Send(&csrF.pointer.front() + offsetRows, rows + 1, MPI_UINT32_T, dest, FROM_MASTER, MPI_COMM_WORLD);
+                MPI_Send(&csrF.indices.front() + nnzOffsetF, nnzF, MPI_UINT32_T, dest, FROM_MASTER, MPI_COMM_WORLD);
+            }
 
             offsetRows += rows;
             nnzOffsetA += nnzA;
             nnzOffsetF += nnzF;
-
-            for(int i = 0; i < cscB.pointer.size(); i++) {
-                testPointer.push_back(cscB.pointer[i]);
-            }
-            for(int i = 0; i < cscB.indices.size(); i++) {
-                testIndices.push_back(cscB.indices[i]);
-            }
         }
     }
 
     // broadcast matrix B to all workers
-    MPI_Bcast(&B.nRow, 1, MPI_UINT32_T, 0, MPI_COMM_WORLD);
-    MPI_Bcast(&B.nCol, 1, MPI_UINT32_T, 0, MPI_COMM_WORLD);
-    MPI_Bcast(&B.nnz, 1, MPI_UINT32_T, 0, MPI_COMM_WORLD);
-    if(rank > 0) {
-        cscB.pointer.resize(B.nCol+1);
-        cscB.indices.resize(B.nnz);
-        //testPointer.resize(B.nCol+1);
-        //testIndices.resize(B.nnz);
+    {
+        if (rank == 0)
+            Timer time("Broadcasting B\n");
+        MPI_Bcast(&B.nRow, 1, MPI_UINT32_T, 0, MPI_COMM_WORLD);
+        MPI_Bcast(&B.nCol, 1, MPI_UINT32_T, 0, MPI_COMM_WORLD);
+        MPI_Bcast(&B.nnz, 1, MPI_UINT32_T, 0, MPI_COMM_WORLD);
+        if (rank > 0) {
+            cscB.pointer.resize(B.nCol + 1);
+            cscB.indices.resize(B.nnz);
+        }
+        MPI_Bcast(&cscB.pointer.front(), B.nCol + 1, MPI_UINT32_T, 0, MPI_COMM_WORLD);
+        MPI_Bcast(&cscB.indices.front(), B.nnz, MPI_UINT32_T, 0, MPI_COMM_WORLD);
     }
-    MPI_Bcast(&cscB.pointer.front(), B.nCol + 1, MPI_UINT32_T, 0, MPI_COMM_WORLD);
-    MPI_Bcast(&cscB.indices.front(), B.nnz, MPI_UINT32_T, 0, MPI_COMM_WORLD);
 
     CSX csrRet;
     if (rank > 0) {
@@ -153,11 +124,15 @@ int main(int argc, char* argv[])
         F.nCol = B.nCol;
         A.nCol = B.nRow;
 
-        MPI_Recv(&csrA.pointer, A.nRow + 1, MPI_UINT32_T, 0, FROM_MASTER, MPI_COMM_WORLD, &status);
-        MPI_Recv(&csrA.indices, A.nnz, MPI_UINT32_T, 0, FROM_MASTER, MPI_COMM_WORLD, &status);
+        csrA.pointer.resize(A.nRow + 1);
+        csrA.indices.resize(A.nnz);
+        MPI_Recv(&csrA.pointer.front(), A.nRow + 1, MPI_UINT32_T, 0, FROM_MASTER, MPI_COMM_WORLD, &status);
+        MPI_Recv(&csrA.indices.front(), A.nnz, MPI_UINT32_T, 0, FROM_MASTER, MPI_COMM_WORLD, &status);
 
-        MPI_Recv(&csrF.pointer, F.nRow, MPI_UINT32_T, 0, FROM_MASTER, MPI_COMM_WORLD, &status);
-        MPI_Recv(&csrF.indices, F.nnz, MPI_UINT32_T, 0, FROM_MASTER, MPI_COMM_WORLD, &status);
+        csrF.pointer.resize(F.nRow + 1);
+        csrF.indices.resize(F.nnz);
+        MPI_Recv(&csrF.pointer.front(), F.nRow + 1, MPI_UINT32_T, 0, FROM_MASTER, MPI_COMM_WORLD, &status);
+        MPI_Recv(&csrF.indices.front(), F.nnz, MPI_UINT32_T, 0, FROM_MASTER, MPI_COMM_WORLD, &status);
 
         /* ---------------------- Blocking ---------------------- */
         BSXNoPad bcsrA;
@@ -177,6 +152,7 @@ int main(int argc, char* argv[])
         csc2bcscNoPad(B, cscB, bcscB);
         csr2bcsrNoPad(F, csrF, bcsrF);
 
+        std::cout << "\nWorker:" << rank << " BLOCK BMM" << std::endl;
         BSXNoPad ret;
         {
             Timer time("Time BLOCK-BMM\n");
@@ -211,7 +187,7 @@ int main(int argc, char* argv[])
     }
 
     MPI_Finalize();
-#endif
+#endif // end MPI
 
 #ifdef SERIAL
     /* -------------------- Prepare data -------------------- */

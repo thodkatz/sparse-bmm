@@ -59,6 +59,8 @@ void mm2csr(char* argv, CSX& csr, MatrixInfo& arr);
 
 void mm2csc(char* argv, CSX& csc, MatrixInfo& arr);
 
+void readInput(char* argv[], MatrixInfo& A, MatrixInfo& B, MatrixInfo& F, CSX& csrA, CSX& cscB, CSX& csrF);
+
 /* ----------------------- Padding Data Structure---------------------- */
 void csr2bcsrPad(MatrixInfo& arr, const CSX& csr, BSXPad& bcsr);
 
