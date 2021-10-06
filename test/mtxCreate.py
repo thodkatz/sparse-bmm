@@ -5,9 +5,13 @@ import numpy as np
 print("Creating random sparse coo matrix A,B,F .mtx format")
 print("Dir: $(PROJECT_ROOT)/matrices")
 
-nRowA,nColA = 10,20
+nRowA,nColA = int(5e5),int(5e5)
 nRowB,nColB = nColA,nRowA
 nRowF,nColF = nRowA,nColB
+
+d = 4;
+den = d/nRowA;
+
 def printRowCol(name,nRow,nCol):
     print(name + ":" + str(nRow) + "," + str(nCol))
 
@@ -17,9 +21,9 @@ printRowCol('F',nRowF,nColF)
 
 rng = default_rng()
 #rng = 1
-cooAsci = random(nRowA, nColA, format='coo', density=0.25, random_state=rng)
-cooBsci = random(nRowB, nColB, format='coo', density=0.25, random_state=rng)
-cooFsci = random(nRowF, nColF, format='coo', density=0.25, random_state=rng)
+cooAsci = random(nRowA, nColA, format='coo', density=den, random_state=rng)
+cooBsci = random(nRowB, nColB, format='coo', density=den, random_state=rng)
+cooFsci = random(nRowF, nColF, format='coo', density=den, random_state=rng)
 
 # print(((cooAsci.todense() > 0))*1)
 # print("\n")
@@ -28,13 +32,6 @@ cooFsci = random(nRowF, nColF, format='coo', density=0.25, random_state=rng)
 # print(((cooFsci.todense() > 0))*1)
 
 nnzA, nnzB, nnzF = len(cooAsci.row), len(cooBsci.row), len(cooFsci.row)
-
-# cooAtuple = list(zip(cooAsci.row,cooAsci.col))
-# cooAtuple.sort(key=lambda x:x[1])
-# cooBtuple = list(zip(cooBsci.row,cooBsci.col))
-# cooBtuple.sort(key=lambda x:x[1])
-# cooFtuple = list(zip(cooFsci.row,cooFsci.col))
-# cooFtuple.sort(key=lambda x:x[1])
 
 cooA = np.empty((nnzA,2))
 indA = np.lexsort((cooAsci.row,cooAsci.col))

@@ -1,6 +1,6 @@
 CXX:=g++
 CCMPI:=mpic++
-CXXFLAGS:=-g -O3 -pedantic -Wall
+CXXFLAGS:=-g -pedantic -Wall
 
 SRC:=src/*.cpp
 INC:=inc
@@ -14,7 +14,7 @@ openmp: $(SRC)
 	$(CXX) $(CXXFLAGS) -fopenmp -DOPENMP $^ -I$(INC)  -o bin/$@
 
 hybrid: $(SRC)
-	$(CCMPI) $(CXXFLAGS) -fopenmp -DHYBRID $^ -I$(INC) -o bin/$@ 
+	$(CCMPI) $(CXXFLAGS) -DHYBRID $^ -I$(INC) -o bin/$@ 
 
 .PHONY: clean
 

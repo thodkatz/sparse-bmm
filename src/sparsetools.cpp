@@ -202,6 +202,11 @@ void bcsc2cscPad(const MatrixInfo& arr, const BSXPad& bcsc, CSX& csc)
  */
 void csr2bcsrNoPad(MatrixInfo& arr, const CSX& csr, BSXNoPad& bcsr)
 {
+    if(arr.blockSizeX == 0 || arr.blockSizeY == 0) {
+        std::cout << "Block size is set to 0. Aborting" << std::endl;
+        exit(-1);
+    }
+
     if (arr.nCol / arr.blockSizeX == 0 || arr.nRow / arr.blockSizeY == 0) {
         std::cout << "Block dimensions exceed the matrix dimensions" << std::endl;
         exit(-1);
@@ -267,10 +272,12 @@ void csc2bcscNoPad(MatrixInfo& arr, const CSX& csc, BSXNoPad& bcsc)
 {
     MatrixInfo& swapArr = arr;
     std::swap(swapArr.nCol,swapArr.nRow);
+    csr2bcsrNoPad(swapArr, csc, bcsc);
+
+    // re-adjust dimensions
+    std::swap(swapArr.nCol,swapArr.nRow);
     std::swap(swapArr.blockSizeX,swapArr.blockSizeY);
     std::swap(swapArr.numBlockX,swapArr.numBlockY);
-
-    csr2bcsrNoPad(swapArr, csc, bcsc);
 }
 
 void bcsr2csrNoPad(const MatrixInfo& arr, const BSXNoPad& bcsrNoPad, CSX& csr)
@@ -299,7 +306,11 @@ void bcsr2csrNoPad(const MatrixInfo& arr, const BSXNoPad& bcsrNoPad, CSX& csr)
 
 void bcsc2cscNoPad(const MatrixInfo& arr, const BSXNoPad& bcscNoPad, CSX& csc)
 {
-    bcsr2csrNoPad(arr, bcscNoPad, csc);
+    MatrixInfo swapArray = arr;
+    std::swap(swapArray.nCol,swapArray.nRow);
+    std::swap(swapArray.blockSizeX,swapArray.blockSizeY);
+    std::swap(swapArray.numBlockX,swapArray.numBlockY);
+    bcsr2csrNoPad(swapArray, bcscNoPad, csc);
 }
 
 /**
@@ -311,8 +322,8 @@ void mm2csr(char* argv, CSX& csr, MatrixInfo& arr)
     std::vector<uint32_t> cooRows;
     std::vector<uint32_t> cooCols;
     mm2coo(argv, cooRows, cooCols, arr);
-    // printVector(cooRows, " ");
-    // printVector(cooCols, " ");
+    //printVector(cooRows, " ");
+    //printVector(cooCols, " ");
     coo2csr(arr, cooRows, cooCols, csr);
 }
 

@@ -176,7 +176,7 @@ CSX bmmPerBlock(const BSXNoPad& csrA, const BSXNoPad& cscB, const CSX& csrF, uin
  *  Note:
  *  The blocking techniques used is the no padding, keep tracking the non zero blocks.
  */
-BSXNoPad bmmBlock(const MatrixInfo& F, const BSXNoPad& bcsrA, const BSXNoPad& bcscB, const BSXNoPad& bcsrF)
+BSXNoPad bmmBlock(const MatrixInfo& A, const BSXNoPad& bcsrA, const BSXNoPad& bcscB, const BSXNoPad& bcsrF)
 {
 #ifdef OPENMP
     if (std::getenv("OMP_NUM_THREADS") == nullptr) {
@@ -201,7 +201,7 @@ BSXNoPad bmmBlock(const MatrixInfo& F, const BSXNoPad& bcsrA, const BSXNoPad& bc
 #ifdef OPENMP
 #pragma omp parallel for schedule(static)
 #endif
-    for (uint32_t blockY = 0; blockY < F.numBlockY; blockY++) {
+    for (uint32_t blockY = 0; blockY < A.numBlockY; blockY++) {
         uint32_t indexBlockStartCol = 0;
         uint32_t indexBlockEndCol   = 0;
         uint32_t indexBlockStartRow = 0;
@@ -226,20 +226,20 @@ BSXNoPad bmmBlock(const MatrixInfo& F, const BSXNoPad& bcsrA, const BSXNoPad& bc
             indexBlockEndRow   = bcscB.blockPointer[idBlockCol + 1];
 
             CSX csrBlockMask;
-            getBlock(bcsrF, csrBlockMask, indexBlockX, F.blockSizeY);
+            getBlock(bcsrF, csrBlockMask, indexBlockX, A.blockSizeY);
 
             CSX csrResultBlock =
-                subBlockMul(bcsrA, bcscB, csrBlockMask, F.blockSizeY, F.blockSizeX, indexBlockStartCol, indexBlockEndCol, indexBlockStartRow, indexBlockEndRow);
+                subBlockMul(bcsrA, bcscB, csrBlockMask, A.blockSizeY, A.blockSizeX, indexBlockStartCol, indexBlockEndCol, indexBlockStartRow, indexBlockEndRow);
 
             // check if empty block
-            if (csrResultBlock.pointer[F.blockSizeY] != 0) {
+            if (csrResultBlock.pointer[A.blockSizeY] != 0) {
 #ifdef OPENMP
                 results[tid].idBlock.push_back(idBlockCol);
-                appendResult(results[tid], csrResultBlock, F.blockSizeY);
+                appendResult(results[tid], csrResultBlock, A.blockSizeY);
                 nnzBlocks[tid]++;
 #else
                 result.idBlock.push_back(idBlockCol);
-                appendResult(result, csrResultBlock, F.blockSizeY);
+                appendResult(result, csrResultBlock, A.blockSizeY);
                 nnzBlocks++;
 #endif
             }
@@ -340,12 +340,12 @@ CSX subBlockMul(const BSXNoPad& bcsrA,
     // find the indices of the common elements
     // pairs are stored in a contiguous manner
     // e.g. (1,2),(3,3)
-    // std::vector<uint32_t> indicesOfCommon;
-    // indicesIntersection(bcsrA.idBlock.begin() + indexBlockStartCol,
-    //                     bcsrA.idBlock.begin() + indexBlockEndCol,
-    //                     bcscB.idBlock.begin() + indexBlockStartRow,
-    //                     bcscB.idBlock.begin() + indexBlockEndRow,
-    //                     std::back_inserter(indicesOfCommon));
+    std::vector<uint32_t> indicesOfCommon;
+    indicesIntersection(bcsrA.idBlock.begin() + indexBlockStartCol,
+                        bcsrA.idBlock.begin() + indexBlockEndCol,
+                        bcscB.idBlock.begin() + indexBlockStartRow,
+                        bcscB.idBlock.begin() + indexBlockEndRow,
+                        std::back_inserter(indicesOfCommon));
 
     CSX csrBlockCold;
     CSX csrBlockCnew;
@@ -354,38 +354,28 @@ CSX subBlockMul(const BSXNoPad& bcsrA,
     uint32_t pointerOffsetA = 0;
     uint32_t pointerOffsetB = 0;
 
-    uint32_t i = indexBlockStartCol;
-    uint32_t j = indexBlockStartRow;
+    // for every pair of aligned blocks perform the bmm
+    for (uint32_t i = 0, first = 0, second = 0; i < indicesOfCommon.size(); i += 2) {
+        first          = indicesOfCommon[i];
+        second         = indicesOfCommon[i + 1];
+        pointerOffsetA = (first + indexBlockStartCol) * blockSizeY;
+        pointerOffsetB = (second + indexBlockStartRow) * blockSizeY;
 
-    bool isFirst = true;
-    while (i != indexBlockEndCol && j != indexBlockEndRow) {
-        if (bcsrA.idBlock[i] < bcscB.idBlock[j]) {
-            ++i;
-        }
-        else if (bcscB.idBlock[j] < bcsrA.idBlock[i]) {
-            ++j;
-        }
-        else {
-            pointerOffsetA = i * blockSizeY;
-            pointerOffsetB = j * blockSizeY;
-
-            if (isFirst) {
-                csrBlockCnew = bmmPerBlock(bcsrA, bcscB, csrMask, pointerOffsetA, pointerOffsetB, blockSizeY);
-                csrBlockCold = csrBlockCnew;
-                csrMask      = updateMask(csrMask, csrBlockCnew);
-                isFirst      = false;
-                continue;
-            }
+        if (i == 0) {
             csrBlockCnew = bmmPerBlock(bcsrA, bcscB, csrMask, pointerOffsetA, pointerOffsetB, blockSizeY);
-
-            csrMask = updateMask(csrMask, csrBlockCnew);
-
-            csrBlockCnew = updateBlockC(csrBlockCnew, csrBlockCold);
             csrBlockCold = csrBlockCnew;
-
-            ++i;
-            ++j;
+            csrMask      = updateMask(csrMask, csrBlockCnew);
+            continue;
         }
+        csrBlockCnew = bmmPerBlock(bcsrA, bcscB, csrMask, pointerOffsetA, pointerOffsetB, blockSizeY);
+
+        // no need update mask last iteration
+        if (i != indicesOfCommon.size() - 2) {
+            csrMask = updateMask(csrMask, csrBlockCnew);
+        }
+
+        csrBlockCnew = updateBlockC(csrBlockCnew, csrBlockCold);
+        csrBlockCold = csrBlockCnew;
     }
 
     return csrBlockCnew;

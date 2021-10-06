@@ -28,6 +28,10 @@ void toDense(CSX csx, uint32_t rows, uint32_t cols, sparseType type, uint32_t po
         }
     }
 
+    if (type == sparseType::CSC) {
+        std::swap(rows, cols);
+    }    
+
     std::cout << std::endl;
     for (uint32_t i = 0; i < rows; i++) {
         for (uint32_t j = 0; j < cols; j++) {
@@ -115,7 +119,7 @@ void csxWriteFile(CSX& csx, std::string filename)
     csxMulFile.close();
 }
 
-void printVector(const std::vector<uint32_t> arr, std::string formatter)
+void printVector(const std::vector<uint32_t>& arr, std::string formatter)
 {
     std::cout << std::endl;
     for (const auto& i : arr) {
