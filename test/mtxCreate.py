@@ -5,11 +5,11 @@ import numpy as np
 print("Creating random sparse coo matrix A,B,F .mtx format")
 print("Dir: $(PROJECT_ROOT)/matrices")
 
-nRowA,nColA = int(5e2),int(5e2)
+nRowA,nColA = int(20),int(20)
 nRowB,nColB = nColA,nRowA
 nRowF,nColF = nRowA,nColB
 
-d = 1;
+d = 4;
 den = d/nRowA;
 
 def printRowCol(name,nRow,nCol):
@@ -34,17 +34,17 @@ cooFsci = random(nRowF, nColF, format='coo', density=den, random_state=rng)
 nnzA, nnzB, nnzF = len(cooAsci.row), len(cooBsci.row), len(cooFsci.row)
 
 cooA = np.empty((nnzA,2))
-indA = np.lexsort((cooAsci.row,cooAsci.col))
+indA = np.lexsort((cooAsci.col,cooAsci.row))
 cooA[:,0] = cooAsci.row[indA]
 cooA[:,1] = cooAsci.col[indA]
 
 cooB = np.empty((nnzB,2))
-indB = np.lexsort((cooBsci.row,cooBsci.col))
+indB = np.lexsort((cooBsci.col,cooBsci.row))
 cooB[:,0] = cooBsci.row[indB]
 cooB[:,1] = cooBsci.col[indB]
 
 cooF = np.empty((nnzF,2))
-indF = np.lexsort((cooFsci.row,cooFsci.col))
+indF = np.lexsort((cooFsci.col,cooFsci.row))
 cooF[:,0] = cooFsci.row[indF]
 cooF[:,1] = cooFsci.col[indF]
 

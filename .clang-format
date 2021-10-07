@@ -6,7 +6,7 @@ AlignEscapedNewlines: Right
 AlignOperands: true
 AlignTrailingComments: true
 BreakBeforeBraces: Stroustrup
-ColumnLimit: 160
+ColumnLimit: 180
 IndentWidth: 4
 PointerAlignment: Left
 SpaceBeforeAssignmentOperators: true

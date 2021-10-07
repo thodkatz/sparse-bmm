@@ -108,11 +108,19 @@ if(csrMul.getnnz() != csrMulRef.getnnz()):
 if(not np.array_equiv(csrMul.indptr,csrMulRef.indptr)):
     print(colored("Test failed :(","red", attrs=["bold"]))
     print("Pointer arrays are different")
+    print("Reference: ")
+    print(csrMulRef.indptr)
+    print("Got: ")
+    print(csrMul.indptr)
     exit()
 
 if(not np.array_equiv(csrMul.indices,csrMulRef.indices)):
     print(colored("Test failed :(","red", attrs=["bold"]))
     print("Indices arrays are different")
+    print("Reference: ")
+    print(csrMulRef.indices)
+    print("Got: ")
+    print(csrMul.indices)
     exit()
 
 print(colored("Hooray! Test passed :)", "green", attrs=["bold"]))

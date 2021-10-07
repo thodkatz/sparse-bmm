@@ -26,6 +26,14 @@ void print(std::vector<uint32_t>& arr)
     std::cout << std::endl;
 }
 
+void printInt(std::vector<int>& arr)
+{
+    for (auto i : arr) {
+        std::cout << i << " ";
+    }
+    std::cout << std::endl;
+}
+
 int main(int argc, char* argv[])
 {
 #ifdef OPENMPI
@@ -33,7 +41,7 @@ int main(int argc, char* argv[])
     MPI_Init(&argc, &argv);
     MPI_Comm_size(MPI_COMM_WORLD, &numtasks);
     std::cout << "Number of processors: " << numtasks << std::endl;
-    uint32_t numWorkers = numtasks - 1;
+    int numWorkers = numtasks - 1;
     MPI_Status status;
 
     if (numtasks < 2) {
@@ -53,53 +61,61 @@ int main(int argc, char* argv[])
     int rank;
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MatrixInfo A, B, F, C;
+    CSX csrAmaster, csrFmaster;
     CSX csrA, cscB, csrF;
-    uint32_t offsetRows = 0;
 
+    std::vector<int> nnzSizeA;
+    std::vector<int> nnzOffsetA;
+
+    std::vector<int> nnzSizeF;
+    std::vector<int> nnzOffsetF;
+
+    std::vector<int> rowOffset;
+    std::vector<int> rowSize;
+
+    // read and distribute A and F
     if (rank == 0) {
-        readInput(argv, A, B, F, csrA, cscB, csrF);
-        uint32_t averageRows = A.nRow / numWorkers;
-        uint32_t extra       = A.nRow % numWorkers;
+        readInput(argv, A, B, F, csrAmaster, cscB, csrFmaster);
+        int averageRows = A.nRow / numWorkers;
+        int extra       = A.nRow % numWorkers;
 
         C.nRow = A.nRow;
         C.nCol = B.nCol;
 
-        // select and send a range of rows of matrices A and F to workers
-        uint32_t rows       = 0;
-        uint32_t nnzA       = 0;
-        uint32_t nnzF       = 0;
-        uint32_t nnzOffsetA = 0;
-        uint32_t nnzOffsetF = 0;
-        std::cout << "\nMASTER rank sending slices of A and F ...\n";
-        for (uint32_t dest = 1; dest <= numWorkers; dest++) {
-            rows = (dest <= extra) ? averageRows + 1 : averageRows;
-            nnzA = csrA.pointer[rows] - csrA.pointer[offsetRows];
-            nnzF = csrF.pointer[rows] - csrF.pointer[offsetRows];
+        nnzSizeA.resize(numtasks);
+        nnzOffsetA.resize(numtasks);
 
-            MPI_Send(&offsetRows, 1, MPI_UINT32_T, dest, FROM_MASTER, MPI_COMM_WORLD);
-            MPI_Send(&rows, 1, MPI_UINT32_T, dest, FROM_MASTER, MPI_COMM_WORLD);
-            MPI_Send(&nnzA, 1, MPI_UINT32_T, dest, FROM_MASTER, MPI_COMM_WORLD);
-            MPI_Send(&nnzF, 1, MPI_UINT32_T, dest, FROM_MASTER, MPI_COMM_WORLD);
+        nnzSizeF.resize(numtasks);
+        nnzOffsetF.resize(numtasks);
 
-            {
-                Timer time("Sending csrA to worker:" + std::to_string(dest) + "\n");
-                MPI_Send(&csrA.pointer.front() + offsetRows, rows + 1, MPI_UINT32_T, dest, FROM_MASTER, MPI_COMM_WORLD);
-                MPI_Send(&csrA.indices.front() + nnzOffsetA, nnzA, MPI_UINT32_T, dest, FROM_MASTER, MPI_COMM_WORLD);
-            }
+        rowOffset.resize(numtasks);
+        rowSize.resize(numtasks);
 
-            {
-                Timer time("Sending csrF to worker:" + std::to_string(dest) + "\n");
-                MPI_Send(&csrF.pointer.front() + offsetRows, rows + 1, MPI_UINT32_T, dest, FROM_MASTER, MPI_COMM_WORLD);
-                MPI_Send(&csrF.indices.front() + nnzOffsetF, nnzF, MPI_UINT32_T, dest, FROM_MASTER, MPI_COMM_WORLD);
-            }
+        for (int dest = 1, rows = 0, countRows = 0; dest <= numWorkers; dest++) {
+            rowSize[dest]    = (dest <= extra) ? averageRows + 1 : averageRows;
+            rowOffset[dest]  = rowOffset[dest - 1] + rowSize[dest - 1];
+            rows             = rowSize[dest];
+            countRows        = rowOffset[dest];
+            nnzSizeA[dest]   = csrAmaster.pointer[countRows + rows] - csrAmaster.pointer[countRows];
+            nnzSizeF[dest]   = csrFmaster.pointer[countRows + rows] - csrFmaster.pointer[countRows];
+            nnzOffsetA[dest] = nnzOffsetA[dest - 1] + nnzSizeA[dest - 1];
+            nnzOffsetF[dest] = nnzOffsetF[dest - 1] + nnzSizeF[dest - 1];
 
-            offsetRows += rows;
-            nnzOffsetA += nnzA;
-            nnzOffsetF += nnzF;
+            // send size to each process to allocate memory
+            MPI_Send(&nnzSizeA[dest], 1, MPI_UINT32_T, dest, FROM_MASTER, MPI_COMM_WORLD);
+            MPI_Send(&nnzSizeF[dest], 1, MPI_UINT32_T, dest, FROM_MASTER, MPI_COMM_WORLD);
+            MPI_Send(&rowSize[dest], 1, MPI_UINT32_T, dest, FROM_MASTER, MPI_COMM_WORLD);
+
+            // remove pointer offsets
+            std::for_each(
+                csrAmaster.pointer.begin() + countRows, csrAmaster.pointer.begin() + countRows + rows, [start = csrAmaster.pointer[countRows]](uint32_t& i) { i -= start; });
+            std::for_each(
+                csrFmaster.pointer.begin() + countRows, csrFmaster.pointer.begin() + countRows + rows, [start = csrFmaster.pointer[countRows]](uint32_t& i) { i -= start; });
         }
     }
 
     // broadcast matrix B to all workers
+    // just read it actually, but keep it for now
     {
         if (rank == 0)
             Timer time("Broadcasting B\n");
@@ -114,26 +130,45 @@ int main(int argc, char* argv[])
         MPI_Bcast(&cscB.indices.front(), B.nnz, MPI_UINT32_T, 0, MPI_COMM_WORLD);
     }
 
-    CSX csrRet;
+    // receive matrix info and allocate memory
     if (rank > 0) {
-        MPI_Recv(&offsetRows, 1, MPI_UINT32_T, 0, FROM_MASTER, MPI_COMM_WORLD, &status);
-        MPI_Recv(&A.nRow, 1, MPI_UINT32_T, 0, FROM_MASTER, MPI_COMM_WORLD, &status);
         MPI_Recv(&A.nnz, 1, MPI_UINT32_T, 0, FROM_MASTER, MPI_COMM_WORLD, &status);
         MPI_Recv(&F.nnz, 1, MPI_UINT32_T, 0, FROM_MASTER, MPI_COMM_WORLD, &status);
+        MPI_Recv(&A.nRow, 1, MPI_UINT32_T, 0, FROM_MASTER, MPI_COMM_WORLD, &status);
         F.nRow = A.nRow;
-        F.nCol = B.nCol;
         A.nCol = B.nRow;
+        F.nCol = B.nCol;
 
-        csrA.pointer.resize(A.nRow + 1);
+        csrA.pointer.resize(A.nRow);
         csrA.indices.resize(A.nnz);
-        MPI_Recv(&csrA.pointer.front(), A.nRow + 1, MPI_UINT32_T, 0, FROM_MASTER, MPI_COMM_WORLD, &status);
-        MPI_Recv(&csrA.indices.front(), A.nnz, MPI_UINT32_T, 0, FROM_MASTER, MPI_COMM_WORLD, &status);
-
-        csrF.pointer.resize(F.nRow + 1);
+        csrF.pointer.resize(F.nRow);
         csrF.indices.resize(F.nnz);
-        MPI_Recv(&csrF.pointer.front(), F.nRow + 1, MPI_UINT32_T, 0, FROM_MASTER, MPI_COMM_WORLD, &status);
-        MPI_Recv(&csrF.indices.front(), F.nnz, MPI_UINT32_T, 0, FROM_MASTER, MPI_COMM_WORLD, &status);
+    }
 
+    {
+        if (rank == 0)
+            Timer time("Master scattering data\n");
+        MPI_Scatterv(&csrAmaster.pointer.front(), &rowSize.front(), &rowOffset.front(), MPI_UINT32_T, &csrA.pointer.front(), A.nRow, MPI_UINT32_T, 0, MPI_COMM_WORLD);
+        MPI_Scatterv(&csrAmaster.indices.front(), &nnzSizeA.front(), &nnzOffsetA.front(), MPI_UINT32_T, &csrA.indices.front(), A.nnz, MPI_UINT32_T, 0, MPI_COMM_WORLD);
+        MPI_Scatterv(&csrFmaster.pointer.front(), &rowSize.front(), &rowOffset.front(), MPI_UINT32_T, &csrF.pointer.front(), F.nRow, MPI_UINT32_T, 0, MPI_COMM_WORLD);
+        MPI_Scatterv(&csrFmaster.indices.front(), &nnzSizeF.front(), &nnzOffsetF.front(), MPI_UINT32_T, &csrF.indices.front(), F.nnz, MPI_UINT32_T, 0, MPI_COMM_WORLD);
+    }
+
+    // add the count of nnz to the end of the pointer array
+    if (rank > 0) {
+        csrA.pointer.push_back(A.nnz);
+        csrF.pointer.push_back(F.nnz);
+    }
+
+    CSX csrRet;
+    std::vector<int> nnzRetSize;
+    std::vector<int> nnzRetOffset;
+    if (rank == 0) {
+        nnzRetSize.resize(numtasks);
+        nnzRetOffset.resize(numtasks);
+    }
+
+    if (rank > 0) {
         /* ---------------------- Blocking ---------------------- */
         BSXNoPad bcsrA;
         BSXNoPad bcscB;
@@ -141,8 +176,8 @@ int main(int argc, char* argv[])
 
         // A.blockSizeX = (uint32_t)(A.nRow / 20);
         // A.blockSizeY = (uint32_t)(A.nCol / 20);
-        A.blockSizeX = 2;
-        A.blockSizeY = 2;
+        A.blockSizeX = 3;
+        A.blockSizeY = 3;
         B.blockSizeX = A.blockSizeX;
         B.blockSizeY = A.blockSizeY;
         F.blockSizeX = B.blockSizeY;
@@ -166,23 +201,33 @@ int main(int argc, char* argv[])
             Timer time("Time BLOCK-BMM result convert BSX->CSX\n");
             bcsr2csrNoPad(C, ret, csrRet);
         }
-
-        MPI_Reduce(&C.nnz, &C.nnz, 1, MPI_UINT32_T, MPI_SUM, 0, MPI_COMM_WORLD);
     }
+
+    // gather nnz from all processes
+    MPI_Gather(&C.nnz, 1, MPI_UINT32_T, &nnzRetSize.front(), 1, MPI_UINT32_T, 0, MPI_COMM_WORLD);
 
     // Gather results
     CSX result;
     if (rank == 0) {
-        result.pointer.resize(A.nRow + 1);
+        // accumulate nnzRet
+        C.nnz = std::accumulate(nnzRetSize.begin(), nnzRetSize.end(), 0);
+        for (int i = 1; i <= numWorkers; i++) {
+            nnzRetOffset[i] += nnzRetOffset[i - 1] + nnzRetSize[i - 1];
+        }
+        result.pointer.resize(A.nRow);
         result.indices.resize(C.nnz);
     }
 
-    int nnz = C.nnz;
-
-    MPI_Gather(&csrRet.pointer, nnz, MPI_UINT32_T, &csrRet.pointer, nnz, MPI_UINT32_T, 0, MPI_COMM_WORLD);
-    MPI_Gather(&csrRet.indices, nnz, MPI_UINT32_T, &csrRet.indices, nnz, MPI_UINT32_T, 0, MPI_COMM_WORLD);
+    MPI_Gatherv(&csrRet.pointer.front(), C.nRow, MPI_UINT32_T, &result.pointer.front(), &rowSize.front(), &rowOffset.front(), MPI_UINT32_T, 0, MPI_COMM_WORLD);
+    MPI_Gatherv(&csrRet.indices.front(), C.nnz, MPI_UINT32_T, &result.indices.front(), &nnzRetSize.front(), &nnzRetOffset.front(), MPI_UINT32_T, 0, MPI_COMM_WORLD);
 
     if (rank == 0) {
+        // fix pointer offset
+        for (int i = 1; i <= numWorkers; i++) {
+            std::for_each(
+                result.pointer.begin() + rowOffset[i], result.pointer.begin() + rowOffset[i] + rowSize[i], [start = nnzRetOffset[i]](uint32_t& i) { i += start; });
+        }
+        result.pointer.push_back(C.nnz);
         csxWriteFile(result, "test/csrMul.txt");
     }
 
@@ -231,8 +276,8 @@ int main(int argc, char* argv[])
     // A.blockSizeY = (uint32_t)(A.nCol / pow(A.nCol,1.0/3.0));
     A.blockSizeX = std::min((uint32_t)(A.nRow / 20), A.nRow / 2);
     A.blockSizeY = std::min((uint32_t)(A.nCol / 20), A.nCol / 2);
-    // A.blockSizeX = 2;
-    // A.blockSizeY = 1;
+    // A.blockSizeX = 3;
+    // A.blockSizeY = 3;
     B.blockSizeX = A.blockSizeX;
     B.blockSizeY = A.blockSizeY;
     F.blockSizeX = B.blockSizeY;

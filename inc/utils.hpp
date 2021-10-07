@@ -46,8 +46,11 @@ bool hasCommon(InputIterator1 first1, InputIterator1 last1, InputIterator2 first
 
 /* ------------------- Print utilities ------------------ */
 void printVector(const std::vector<uint32_t>& arr, std::string formatter);
+
 void printBSX(const BSXNoPad& bcsx);
+
 void printCSX(const CSX& csx);
+
 void printCoo(std::vector<uint32_t>& rows, std::vector<uint32_t>& cols);
 
 enum class sparseType { CSR, CSC };

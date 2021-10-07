@@ -126,7 +126,7 @@ void printVector(const std::vector<uint32_t>& arr, std::string formatter)
         std::cout << i << formatter;
     }
     std::cout << std::endl;
-};
+}
 
 void printCSX(const CSX& csx)
 {
@@ -139,7 +139,7 @@ void printCSX(const CSX& csx)
         std::cout << i << " ";
     }
     std::cout << std::endl;
-};
+}
 
 void printBSX(const BSXNoPad& bcsx)
 {
@@ -172,4 +172,4 @@ void printCoo(std::vector<uint32_t>& rows, std::vector<uint32_t>& cols)
         std::cout << rows[i] << " " << cols[i] << std::endl;
     }
     std::cout << std::endl;
-};
+}
