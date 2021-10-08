@@ -174,10 +174,8 @@ int main(int argc, char* argv[])
         BSXNoPad bcscB;
         BSXNoPad bcsrF;
 
-        // A.blockSizeX = (uint32_t)(A.nRow / 20);
-        // A.blockSizeY = (uint32_t)(A.nCol / 20);
-        A.blockSizeX = 3;
-        A.blockSizeY = 3;
+        A.blockSizeY = (uint32_t)(A.nRow / 20); // the slices are mapped to the potential threads that can be used for multithreading
+        A.blockSizeX = (uint32_t)(A.nCol / 1); // small block size of course reduce the block overhead and have better results
         B.blockSizeX = A.blockSizeX;
         B.blockSizeY = A.blockSizeY;
         F.blockSizeX = B.blockSizeY;
@@ -186,6 +184,23 @@ int main(int argc, char* argv[])
         csr2bcsrNoPad(A, csrA, bcsrA);
         csc2bcscNoPad(B, cscB, bcscB);
         csr2bcsrNoPad(F, csrF, bcsrF);
+
+        std::cout << "A: "
+                  << "blockX: " << A.blockSizeX << ", numBlocksX: " << A.numBlockX << ", blockY: " << A.blockSizeY << ", numBlocksY: " << A.numBlockY << std::endl;
+        std::cout << "B: "
+                  << "blockX: " << B.blockSizeX << ", numBlocksX: " << B.numBlockX << ", blockY: " << B.blockSizeY << ", numBlocksY: " << B.numBlockY << std::endl;
+        std::cout << "F: "
+                  << "blockX: " << F.blockSizeX << ", numBlocksX: " << F.numBlockX << ", blockY: " << F.blockSizeY << ", numBlocksY: " << F.numBlockY << std::endl;
+
+        std::cout << "A: Rows: " << A.nRow << ", "
+                  << "Cols: " << A.nCol << ", "
+                  << "nnz: " << A.nnz << std::endl;
+        std::cout << "B: Rows: " << B.nRow << ", "
+                  << "Cols: " << B.nCol << ", "
+                  << "nnz: " << B.nnz << std::endl;
+        std::cout << "F: Rows: " << F.nRow << ", "
+                  << "Cols: " << F.nCol << ", "
+                  << "nnz: " << F.nnz << std::endl;
 
         std::cout << "\nWorker:" << rank << " BLOCK BMM" << std::endl;
         BSXNoPad ret;
@@ -224,8 +239,7 @@ int main(int argc, char* argv[])
     if (rank == 0) {
         // fix pointer offset
         for (int i = 1; i <= numWorkers; i++) {
-            std::for_each(
-                result.pointer.begin() + rowOffset[i], result.pointer.begin() + rowOffset[i] + rowSize[i], [start = nnzRetOffset[i]](uint32_t& i) { i += start; });
+            std::for_each(result.pointer.begin() + rowOffset[i], result.pointer.begin() + rowOffset[i] + rowSize[i], [start = nnzRetOffset[i]](uint32_t& i) { i += start; });
         }
         result.pointer.push_back(C.nnz);
         csxWriteFile(result, "test/csrMul.txt");

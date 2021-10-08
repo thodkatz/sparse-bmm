@@ -345,14 +345,14 @@ void readInput(char* argv[], MatrixInfo& A, MatrixInfo& B, MatrixInfo& F, CSX& c
     }
 
     std::cout << "A: Rows: " << A.nRow << ", "
-              << ", Cols: " << A.nCol << ", "
-              << ", nnz: " << A.nnz << std::endl;
+              << "Cols: " << A.nCol << ", "
+              << "nnz: " << A.nnz << std::endl;
     std::cout << "B: Rows: " << B.nRow << ", "
-              << ", Cols: " << B.nCol << ", "
-              << ", nnz: " << B.nnz << std::endl;
+              << "Cols: " << B.nCol << ", "
+              << "nnz: " << B.nnz << std::endl;
     std::cout << "F: Rows: " << F.nRow << ", "
-              << ", Cols: " << F.nCol << ", "
-              << ", nnz: " << F.nnz << std::endl;
+              << "Cols: " << F.nCol << ", "
+              << "nnz: " << F.nnz << std::endl;
 
     if (A.nCol != B.nRow) {
         std::cout << "Multiplication dimensions mismatch" << std::endl;

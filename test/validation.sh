@@ -32,7 +32,7 @@ for i in ${target[@]}; do
     
     figlet Run | lolcat
     if [[ "$i" == "hybrid" ]]; then
-        mpirun --oversubscribe -n 2 ./bin/$i $FILEA $FILEB $FILEF
+        mpirun --oversubscribe -n 4 ./bin/$i $FILEA $FILEB $FILEF
     else
         ./bin/$i $FILEA $FILEB $FILEF
     fi
