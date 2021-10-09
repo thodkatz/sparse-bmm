@@ -5,7 +5,7 @@ MATRICES=$PROJECT/matrices
 
 #target=("serial" "openmp")
 target=("hybrid")
-export OMP_NUM_THREADS=8
+export OMP_NUM_THREADS=2
 
 for i in ${target[@]}; do
     figlet Build | lolcat

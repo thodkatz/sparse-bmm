@@ -12,27 +12,11 @@
 #ifdef HYBRID
 #define OPENMPI
 #define OPENMP
-#include <mpi.h>
-// define tags to group types of communication with respect to MASTER (rank 0) and the rest WORKERS
-#define FROM_MASTER  1
-#define FROM_WORKERS 2
 #endif
 
-void print(std::vector<uint32_t>& arr)
-{
-    for (auto i : arr) {
-        std::cout << i << " ";
-    }
-    std::cout << std::endl;
-}
-
-void printInt(std::vector<int>& arr)
-{
-    for (auto i : arr) {
-        std::cout << i << " ";
-    }
-    std::cout << std::endl;
-}
+#ifdef OPENMPI
+#include <mpi.h>
+#endif
 
 int main(int argc, char* argv[])
 {
@@ -61,19 +45,16 @@ int main(int argc, char* argv[])
     int rank;
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MatrixInfo A, B, F, C;
-    CSX csrAmaster, csrFmaster;
     CSX csrA, cscB, csrF;
+    CSX csrAmaster, csrFmaster;
 
-    std::vector<int> nnzSizeA;
-    std::vector<int> nnzOffsetA;
+    std::vector<int> nnzSizeA, nnzOffsetA;
 
-    std::vector<int> nnzSizeF;
-    std::vector<int> nnzOffsetF;
+    std::vector<int> nnzSizeF, nnzOffsetF;
 
-    std::vector<int> rowOffset;
-    std::vector<int> rowSize;
+    std::vector<int> rowOffset, rowSize;
 
-    // read and distribute A and F
+    /* --------- Configure CSR-A and CSR-F slices for work distribution --------- */
     if (rank == 0) {
         readInput(argv, A, B, F, csrAmaster, cscB, csrFmaster);
         int averageRows = A.nRow / numWorkers;
@@ -102,9 +83,9 @@ int main(int argc, char* argv[])
             nnzOffsetF[dest] = nnzOffsetF[dest - 1] + nnzSizeF[dest - 1];
 
             // send size to each process to allocate memory
-            MPI_Send(&nnzSizeA[dest], 1, MPI_UINT32_T, dest, FROM_MASTER, MPI_COMM_WORLD);
-            MPI_Send(&nnzSizeF[dest], 1, MPI_UINT32_T, dest, FROM_MASTER, MPI_COMM_WORLD);
-            MPI_Send(&rowSize[dest], 1, MPI_UINT32_T, dest, FROM_MASTER, MPI_COMM_WORLD);
+            MPI_Send(&nnzSizeA[dest], 1, MPI_UINT32_T, dest, 1, MPI_COMM_WORLD);
+            MPI_Send(&nnzSizeF[dest], 1, MPI_UINT32_T, dest, 1, MPI_COMM_WORLD);
+            MPI_Send(&rowSize[dest], 1, MPI_UINT32_T, dest, 1, MPI_COMM_WORLD);
 
             // remove pointer offsets
             std::for_each(
@@ -114,8 +95,7 @@ int main(int argc, char* argv[])
         }
     }
 
-    // broadcast matrix B to all workers
-    // just read it actually, but keep it for now
+    /* ----------------- Broadcast matrix B ----------------- */
     {
         if (rank == 0)
             Timer time("Broadcasting B\n");
@@ -130,11 +110,11 @@ int main(int argc, char* argv[])
         MPI_Bcast(&cscB.indices.front(), B.nnz, MPI_UINT32_T, 0, MPI_COMM_WORLD);
     }
 
-    // receive matrix info and allocate memory
+    /* ---------------- Receive matrix info for memory allocation --------------- */
     if (rank > 0) {
-        MPI_Recv(&A.nnz, 1, MPI_UINT32_T, 0, FROM_MASTER, MPI_COMM_WORLD, &status);
-        MPI_Recv(&F.nnz, 1, MPI_UINT32_T, 0, FROM_MASTER, MPI_COMM_WORLD, &status);
-        MPI_Recv(&A.nRow, 1, MPI_UINT32_T, 0, FROM_MASTER, MPI_COMM_WORLD, &status);
+        MPI_Recv(&A.nnz, 1, MPI_UINT32_T, 0, 1, MPI_COMM_WORLD, &status);
+        MPI_Recv(&F.nnz, 1, MPI_UINT32_T, 0, 1, MPI_COMM_WORLD, &status);
+        MPI_Recv(&A.nRow, 1, MPI_UINT32_T, 0, 1, MPI_COMM_WORLD, &status);
         F.nRow = A.nRow;
         A.nCol = B.nRow;
         F.nCol = B.nCol;
@@ -145,6 +125,7 @@ int main(int argc, char* argv[])
         csrF.indices.resize(F.nnz);
     }
 
+    /* ----------------------- Distribute CSR-A and CSR-F ----------------------- */
     {
         if (rank == 0)
             Timer time("Master scattering data\n");
@@ -154,6 +135,7 @@ int main(int argc, char* argv[])
         MPI_Scatterv(&csrFmaster.indices.front(), &nnzSizeF.front(), &nnzOffsetF.front(), MPI_UINT32_T, &csrF.indices.front(), F.nnz, MPI_UINT32_T, 0, MPI_COMM_WORLD);
     }
 
+    // no overlapping is allowed when sending chuncks of data, so
     // add the count of nnz to the end of the pointer array
     if (rank > 0) {
         csrA.pointer.push_back(A.nnz);
@@ -161,6 +143,7 @@ int main(int argc, char* argv[])
     }
 
     CSX csrRet;
+    // keep track of the bmm's nnz each process will return
     std::vector<int> nnzRetSize;
     std::vector<int> nnzRetOffset;
     if (rank == 0) {
@@ -168,44 +151,33 @@ int main(int argc, char* argv[])
         nnzRetOffset.resize(numtasks);
     }
 
+    /* ---------------- Per Process block-bmm --------------- */
     if (rank > 0) {
-        /* ---------------------- Blocking ---------------------- */
-        BSXNoPad bcsrA;
-        BSXNoPad bcscB;
-        BSXNoPad bcsrF;
+        BSX bcsrA, bcscB, bcsrF;
 
-        A.blockSizeY = (uint32_t)(A.nRow / 20); // the slices are mapped to the potential threads that can be used for multithreading
+        A.blockSizeY = (uint32_t)(A.nRow / 2); // the slices are mapped to the potential threads that can be used for multithreading
         A.blockSizeX = (uint32_t)(A.nCol / 1); // small block size of course reduce the block overhead and have better results
         B.blockSizeX = A.blockSizeX;
         B.blockSizeY = A.blockSizeY;
         F.blockSizeX = B.blockSizeY;
         F.blockSizeY = A.blockSizeY;
 
-        csr2bcsrNoPad(A, csrA, bcsrA);
-        csc2bcscNoPad(B, cscB, bcscB);
-        csr2bcsrNoPad(F, csrF, bcsrF);
+        csr2bcsr(A, csrA, bcsrA);
+        csc2bcsc(B, cscB, bcscB);
+        csr2bcsr(F, csrF, bcsrF);
 
-        std::cout << "A: "
-                  << "blockX: " << A.blockSizeX << ", numBlocksX: " << A.numBlockX << ", blockY: " << A.blockSizeY << ", numBlocksY: " << A.numBlockY << std::endl;
-        std::cout << "B: "
-                  << "blockX: " << B.blockSizeX << ", numBlocksX: " << B.numBlockX << ", blockY: " << B.blockSizeY << ", numBlocksY: " << B.numBlockY << std::endl;
-        std::cout << "F: "
-                  << "blockX: " << F.blockSizeX << ", numBlocksX: " << F.numBlockX << ", blockY: " << F.blockSizeY << ", numBlocksY: " << F.numBlockY << std::endl;
+        std::cout << "Rank: " << rank << std::endl
+                  << "A: blockX: " << A.blockSizeX << ", numBlocksX: " << A.numBlockX << ", blockY: " << A.blockSizeY << ", numBlocksY: " << A.numBlockY << std::endl
+                  << "B: blockX: " << B.blockSizeX << ", numBlocksX: " << B.numBlockX << ", blockY: " << B.blockSizeY << ", numBlocksY: " << B.numBlockY << std::endl
+                  << "F: blockX: " << F.blockSizeX << ", numBlocksX: " << F.numBlockX << ", blockY: " << F.blockSizeY << ", numBlocksY: " << F.numBlockY << std::endl
+                  << "A: Rows: " << A.nRow << ", Cols: " << A.nCol << ", nnz: " << A.nnz << std::endl
+                  << "B: Rows: " << B.nRow << ", Cols: " << B.nCol << ", nnz: " << B.nnz << std::endl
+                  << "F: Rows: " << F.nRow << ", Cols: " << F.nCol << ", nnz: " << F.nnz << std::endl
+                  << std::endl;
 
-        std::cout << "A: Rows: " << A.nRow << ", "
-                  << "Cols: " << A.nCol << ", "
-                  << "nnz: " << A.nnz << std::endl;
-        std::cout << "B: Rows: " << B.nRow << ", "
-                  << "Cols: " << B.nCol << ", "
-                  << "nnz: " << B.nnz << std::endl;
-        std::cout << "F: Rows: " << F.nRow << ", "
-                  << "Cols: " << F.nCol << ", "
-                  << "nnz: " << F.nnz << std::endl;
-
-        std::cout << "\nWorker:" << rank << " BLOCK BMM" << std::endl;
-        BSXNoPad ret;
+        BSX ret;
         {
-            Timer time("Time BLOCK-BMM\n");
+            Timer time("Rank: " + std::to_string(rank) + " Time BLOCK-BMM\n");
             ret = bmmBlock(A, bcsrA, bcscB, bcsrF);
         }
 
@@ -213,15 +185,14 @@ int main(int argc, char* argv[])
         C.nnz = ret.indices.size();
 
         {
-            Timer time("Time BLOCK-BMM result convert BSX->CSX\n");
-            bcsr2csrNoPad(C, ret, csrRet);
+            Timer time("Rank: " + std::to_string(rank) + " Time BLOCK-BMM result convert BSX->CSX\n");
+            bcsr2csr(C, ret, csrRet);
         }
     }
 
-    // gather nnz from all processes
+    /* ------------------------- Gathering from workers and unifying result------------------------- */
     MPI_Gather(&C.nnz, 1, MPI_UINT32_T, &nnzRetSize.front(), 1, MPI_UINT32_T, 0, MPI_COMM_WORLD);
 
-    // Gather results
     CSX result;
     if (rank == 0) {
         // accumulate nnzRet
@@ -249,107 +220,54 @@ int main(int argc, char* argv[])
 #endif // end MPI
 
 #ifdef SERIAL
-    /* -------------------- Prepare data -------------------- */
+    /* ------------------------------ Prepate Data ------------------------------ */
     MatrixInfo A, B, F;
     CSX csrA, cscB, csrF;
     readInput(argv, A, B, F, csrA, cscB, csrF);
 
-#ifdef DEBUG
-    std::cout << "\nA";
-    printCSX(csrA);
-
-    std::cout << "\nB";
-    printCSX(cscB);
-
-    std::cout << "\nF";
-    printCSX(csrF);
-#endif
-
-    /* ------- Masked CSR Matrix-Matrix Multiplication ------ */
+    /* --------------------------- Masked CSR-CSC BMM --------------------------- */
     CSX csrCmask;
     {
         Timer time("Time masked serial no blocking SpGEMM: \n");
-        csrCmask = csxMul(csrA, cscB, csrF);
+        csrCmask = bmm(csrA, cscB, csrF);
     }
     std::cout << "C.nnz: " << csrCmask.indices.size() << std::endl;
 
-    /* --- Write results for validation with python script -- */
-    csxWriteFile(csrCmask, "test/csrMul.txt");
 
-    // ====================================================== //
-    // ====================== BLOCKING ====================== //
-    // ====================================================== //
-
-    // A.blockSizeX = std::min((uint32_t)(A.nRow / log10(A.nRow)), A.nRow / 2);
-    // A.blockSizeY = std::min((uint32_t)(A.nCol / log10(A.nCol)), A.nCol / 2);
-    // A.blockSizeX = std::min((uint32_t)(A.nRow / log2(A.nRow)), A.nRow / 2);
-    // A.blockSizeY = std::min((uint32_t)(A.nCol / log2(A.nCol)), A.nCol / 2);
-    // A.blockSizeX = std::min((uint32_t)(A.nRow / sqrt(A.nRow)), A.nRow / 2);
-    // A.blockSizeY = std::min((uint32_t)(A.nCol / sqrt(A.nCol)), A.nCol / 2);
-    // A.blockSizeX = (uint32_t)(A.nRow / pow(A.nRow,1.0/3.0));
-    // A.blockSizeY = (uint32_t)(A.nCol / pow(A.nCol,1.0/3.0));
-    A.blockSizeX = std::min((uint32_t)(A.nRow / 20), A.nRow / 2);
-    A.blockSizeY = std::min((uint32_t)(A.nCol / 20), A.nCol / 2);
-    // A.blockSizeX = 3;
-    // A.blockSizeY = 3;
+    /* -------------------------------- Blocking -------------------------------- */
+    // blockSizeX ~= blockSizeY is supported
+    A.blockSizeX = A.nRow / 20;
+    A.blockSizeY = A.nCol / 20;
     B.blockSizeX = A.blockSizeX;
     B.blockSizeY = A.blockSizeY;
     F.blockSizeX = B.blockSizeY;
     F.blockSizeY = A.blockSizeY;
 
-    BSXNoPad bcsrA;
-    BSXNoPad bcscB;
-    BSXNoPad bcsrF;
+    BSX bcsrA, bcscB, bcsrF;
     {
         Timer time("Time creating BSX\n");
-        csr2bcsrNoPad(A, csrA, bcsrA);
-        csc2bcscNoPad(B, cscB, bcscB);
-        csr2bcsrNoPad(F, csrF, bcsrF);
+        csr2bcsr(A, csrA, bcsrA);
+        csc2bcsc(B, cscB, bcscB);
+        csr2bcsr(F, csrF, bcsrF);
     }
 
-#ifdef DEBUG
-    printBSX(bcsrA);
-    printBSX(bcscB);
-    printBSX(bcsrF);
-    std::cout << "\nA dense:\n";
-    toDense(csrA, A.nRow, A.nCol, sparseType::CSR, 0, 0);
-
-    std::cout << "\nB dense:\n";
-    toDense(cscB, B.nRow, B.nCol, sparseType::CSC, 0, 0);
-
-    std::cout << "\nF dense:\n";
-    toDense(csrF, F.nRow, F.nCol, sparseType::CSR, 0, 0);
-#endif
-
-    std::cout << "A: "
-              << "blockX: " << A.blockSizeX << ", numBlocksX: " << A.numBlockX << ", blockY: " << A.blockSizeY << ", numBlocksY: " << A.numBlockY << std::endl;
-    std::cout << "B: "
-              << "blockX: " << B.blockSizeX << ", numBlocksX: " << B.numBlockX << ", blockY: " << B.blockSizeY << ", numBlocksY: " << B.numBlockY << std::endl;
-    std::cout << "F: "
-              << "blockX: " << F.blockSizeX << ", numBlocksX: " << F.numBlockX << ", blockY: " << F.blockSizeY << ", numBlocksY: " << F.numBlockY << std::endl;
+    std::cout << "A: blockX: " << A.blockSizeX << ", numBlocksX: " << A.numBlockX << ", blockY: " << A.blockSizeY << ", numBlocksY: " << A.numBlockY << std::endl
+              << "B: blockX: " << B.blockSizeX << ", numBlocksX: " << B.numBlockX << ", blockY: " << B.blockSizeY << ", numBlocksY: " << B.numBlockY << std::endl
+              << "F: blockX: " << F.blockSizeX << ", numBlocksX: " << F.numBlockX << ", blockY: " << F.blockSizeY << ", numBlocksY: " << F.numBlockY << std::endl;
 
     CSX csrArevert;
     CSX cscBrevert;
     CSX csrFrevert;
     {
         Timer time("Time Revert Blocking\n");
-        bcsr2csrNoPad(A, bcsrA, csrArevert);
-        bcsc2cscNoPad(B, bcscB, cscBrevert);
-        bcsr2csrNoPad(F, bcsrF, csrFrevert);
+        bcsr2csr(A, bcsrA, csrArevert);
+        bcsc2csc(B, bcscB, cscBrevert);
+        bcsr2csr(F, bcsrF, csrFrevert);
     }
-
-    std::cout << "\nValidation" << std::endl;
-
-    /* ---------- Validation Blocked data structure --------- */
-    std::cout << "Check conversion from BSX -> CSX\n";
-
-    isEqualCSX(csrA, csrArevert);
-    isEqualCSX(cscB, cscBrevert);
-    isEqualCSX(csrF, csrFrevert);
 
     std::cout << "\nBLOCK BMM" << std::endl;
 
-    BSXNoPad ret;
+    BSX ret;
     {
         Timer time("Time BLOCK-BMM\n");
         ret = bmmBlock(A, bcsrA, bcscB, bcsrF);
@@ -362,22 +280,15 @@ int main(int argc, char* argv[])
     CSX csrRet;
     {
         Timer time("Time BLOCK-BMM result convert BSX->CSX\n");
-        bcsr2csrNoPad(C, ret, csrRet);
+        bcsr2csr(C, ret, csrRet);
+
     }
 
-#ifdef DEBUG
-
-    std::cout << "\nBlocked BMM result";
-    toDense(csrRet, F.nRow, F.nCol, sparseType::CSR, 0, 0);
-    printCSX(csrRet);
-
-    std::cout << "\nCorrect result";
-    toDense(csrCmask, F.nRow, F.nCol, sparseType::CSR, 0, 0);
-    printCSX(csrCmask);
-#endif
-
-    std::cout << "\nBlock BMM validation\n";
+    std::cout << "\nBlock BMM validation with non block BMM\n";
     isEqualCSX(csrCmask, csrRet);
+
+    /* ------------ Export results for validation with python script ------------ */
+    csxWriteFile(csrCmask, "test/csrMul.txt");
 
 #endif // SERIAL
     return 0;

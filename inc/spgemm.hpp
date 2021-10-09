@@ -27,21 +27,19 @@ OutputIterator indicesIntersection(InputIterator1 first1, InputIterator1 last1, 
 }
 
 /* -------------------- Non Blocking -------------------- */
-CSX csxMul(const CSX& csr, const CSX& csc);
+CSX bmm(const CSX& csr, const CSX& csc);
 
-CSX csxMulSTL(const CSX& csr, const CSX& csc);
-
-CSX csxMul(const CSX& csrA, const CSX& cscB, const CSX& csrF);
+CSX bmm(const CSX& csrA, const CSX& cscB, const CSX& csrF);
 
 /* ---------------------- Blocking ---------------------- */
-CSX bmmPerBlock(const BSXNoPad& csrA, const BSXNoPad& cscB, const CSX& csrF, uint32_t pointerOffsetA, uint32_t pointerOffsetB, uint32_t blockSize);
+CSX bmmPerBlock(const BSX& csrA, const BSX& cscB, const CSX& csrF, uint32_t pointerOffsetA, uint32_t pointerOffsetB, uint32_t blockSize);
 
-BSXNoPad bmmBlock(const MatrixInfo& F, const BSXNoPad& bcsrA, const BSXNoPad& bcscB, const BSXNoPad& bcsrF);
+BSX bmmBlock(const MatrixInfo& F, const BSX& bcsrA, const BSX& bcscB, const BSX& bcsrF);
 
-void appendResult(BSXNoPad& result, const CSX& csrResultBlock, uint32_t blockSizeY);
+void appendResult(BSX& result, const CSX& csrResultBlock, uint32_t blockSizeY);
 
-CSX subBlockMul(const BSXNoPad& bcsrA,
-                const BSXNoPad& bcscB,
+CSX subBlockMul(const BSX& bcsrA,
+                const BSX& bcscB,
                 CSX& csrMask,
                 uint32_t blockSizeY,
                 uint32_t blockSizeX,
@@ -56,8 +54,8 @@ CSX updateBlockC(const CSX& current, const CSX& old);
 
 CSX fillMaskOnes(uint32_t blockSizeY, uint32_t blockSizeX);
 
-void getBlock(const BSXNoPad& bcsx, CSX& block, uint32_t nnzBlocksPassed, uint32_t blockSizeY);
+void getBlock(const BSX& bcsx, CSX& block, uint32_t nnzBlocksPassed, uint32_t blockSizeY);
 
-BSXNoPad concatBSX(std::vector<BSXNoPad>& result);
+BSX concatBSX(std::vector<BSX>& result);
 
 #endif

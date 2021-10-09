@@ -101,22 +101,22 @@ void csxWriteFile(CSX& csx, std::string filename)
 {
     uint32_t n   = csx.pointer.size();
     uint32_t nnz = csx.indices.size();
-    std::ofstream csxMulFile;
-    csxMulFile.open(filename);
+    std::ofstream bmmFile;
+    bmmFile.open(filename);
     for (uint32_t i = 0; i < n; i++) {
-        csxMulFile << csx.pointer[i];
+        bmmFile << csx.pointer[i];
         if (i != n - 1) {
-            csxMulFile << ",";
+            bmmFile << ",";
         }
     }
-    csxMulFile << "\n";
+    bmmFile << "\n";
     for (uint32_t i = 0; i < nnz; i++) {
-        csxMulFile << csx.indices[i];
+        bmmFile << csx.indices[i];
         if (i != nnz - 1) {
-            csxMulFile << ",";
+            bmmFile << ",";
         }
     }
-    csxMulFile.close();
+    bmmFile.close();
 }
 
 void printVector(const std::vector<uint32_t>& arr, std::string formatter)
@@ -141,7 +141,7 @@ void printCSX(const CSX& csx)
     std::cout << std::endl;
 }
 
-void printBSX(const BSXNoPad& bcsx)
+void printBSX(const BSX& bcsx)
 {
     std::cout << std::endl;
     for (const auto& i : bcsx.blockPointer) {

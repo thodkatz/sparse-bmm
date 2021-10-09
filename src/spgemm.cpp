@@ -11,52 +11,7 @@
 #include <omp.h>
 #endif
 
-/**
- *  C = A * B, where A CSR, B CSC and C CSR format
- */
-CSX csxMul(const CSX& csrA, const CSX& cscB)
-{
-    uint32_t rows = csrA.pointer.size() - 1;
-
-    CSX mulResult;
-    mulResult.pointer.resize(rows + 1);
-    mulResult.pointer[0];
-
-    uint32_t nnz = 0;
-    for (uint32_t i = 0, idxCol = 0, idxRow = 0; i < rows; i++) {
-        for (uint32_t j = 0; j < rows; j++) {
-            idxCol = csrA.pointer[i];
-            if (idxCol == csrA.pointer[i + 1]) {
-                break;
-            }
-            idxRow = cscB.pointer[j];
-
-            // find common elements row ith and column ith (sorted)
-            // two pointers version
-            while (idxCol < csrA.pointer[i + 1] && idxRow < cscB.pointer[j + 1]) {
-                if (csrA.indices[idxCol] == cscB.indices[idxRow]) {
-                    mulResult.indices.push_back(j);
-                    nnz++;
-                    break;
-                }
-                if (csrA.indices[idxCol] > cscB.indices[idxRow]) {
-                    idxRow++;
-                }
-                if (csrA.indices[idxCol] < cscB.indices[idxRow]) {
-                    idxCol++;
-                }
-            }
-        }
-        mulResult.pointer[i + 1] = nnz;
-    }
-
-    return mulResult;
-}
-
-/**
- * An optimized compressed SpGEMM using STL variant of std::set_intersection()
- */
-CSX csxMulSTL(const CSX& csrA, const CSX& cscB)
+CSX bmm(const CSX& csrA, const CSX& cscB)
 {
     uint32_t rows = csrA.pointer.size() - 1;
 
@@ -93,7 +48,7 @@ CSX csxMulSTL(const CSX& csrA, const CSX& cscB)
     return mulResult;
 }
 
-CSX csxMul(const CSX& csrA, const CSX& cscB, const CSX& csrF)
+CSX bmm(const CSX& csrA, const CSX& cscB, const CSX& csrF)
 {
     uint32_t rows = csrA.pointer.size() - 1;
 
@@ -132,7 +87,7 @@ CSX csxMul(const CSX& csrA, const CSX& cscB, const CSX& csrF)
     return mulResult;
 }
 
-CSX bmmPerBlock(const BSXNoPad& csrA, const BSXNoPad& cscB, const CSX& csrF, uint32_t pointerOffsetA, uint32_t pointerOffsetB, uint32_t blockSize)
+CSX bmmPerBlock(const BSX& csrA, const BSX& cscB, const CSX& csrF, uint32_t pointerOffsetA, uint32_t pointerOffsetB, uint32_t blockSize)
 {
     uint32_t rows = blockSize;
 
@@ -176,7 +131,7 @@ CSX bmmPerBlock(const BSXNoPad& csrA, const BSXNoPad& cscB, const CSX& csrF, uin
  *  Note:
  *  The blocking techniques used is the no padding, keep tracking the non zero blocks.
  */
-BSXNoPad bmmBlock(const MatrixInfo& A, const BSXNoPad& bcsrA, const BSXNoPad& bcscB, const BSXNoPad& bcsrF)
+BSX bmmBlock(const MatrixInfo& A, const BSX& bcsrA, const BSX& bcscB, const BSX& bcsrF)
 {
 #ifdef OPENMP
     if (std::getenv("OMP_NUM_THREADS") == nullptr) {
@@ -186,13 +141,13 @@ BSXNoPad bmmBlock(const MatrixInfo& A, const BSXNoPad& bcsrA, const BSXNoPad& bc
     }
     uint32_t numOfThreads = std::stoi(std::getenv("OMP_NUM_THREADS"));
 
-    std::vector<BSXNoPad> results(numOfThreads);
-    for_each(results.begin(), results.end(), [](BSXNoPad& i) { i.pointer.push_back(0); });
-    for_each(results.begin(), results.end(), [](BSXNoPad& i) { i.blockPointer.push_back(0); });
+    std::vector<BSX> results(numOfThreads);
+    for_each(results.begin(), results.end(), [](BSX& i) { i.pointer.push_back(0); });
+    for_each(results.begin(), results.end(), [](BSX& i) { i.blockPointer.push_back(0); });
 
     std::vector<uint32_t> nnzBlocks(numOfThreads);
 #else
-    BSXNoPad result;
+    BSX result;
     result.pointer.push_back(0);
     result.blockPointer.push_back(0);
     uint32_t nnzBlocks = 0;
@@ -253,7 +208,7 @@ BSXNoPad bmmBlock(const MatrixInfo& A, const BSXNoPad& bcsrA, const BSXNoPad& bc
 
 #ifdef OPENMP
     // concatenate BSX per thread to a single one
-    BSXNoPad result = concatBSX(results);
+    BSX result = concatBSX(results);
 #endif
 
     return result;
@@ -262,9 +217,9 @@ BSXNoPad bmmBlock(const MatrixInfo& A, const BSXNoPad& bcsrA, const BSXNoPad& bc
 /**
  *  Take a vector of BSX and return one unified. Assume that vector is ordered with respect blockY to handle offset requirements for pointers arrays.
  */
-BSXNoPad concatBSX(std::vector<BSXNoPad>& result)
+BSX concatBSX(std::vector<BSX>& result)
 {
-    BSXNoPad ret;
+    BSX ret;
     ret.blockPointer.push_back(0);
     ret.pointer.push_back(0);
 
@@ -296,7 +251,7 @@ BSXNoPad concatBSX(std::vector<BSXNoPad>& result)
 /**
  * Given a BSX format, return an isolated block in CSX format
  */
-void getBlock(const BSXNoPad& bcsx, CSX& block, uint32_t nnzBlocksPassed, uint32_t blockSizeY)
+void getBlock(const BSX& bcsx, CSX& block, uint32_t nnzBlocksPassed, uint32_t blockSizeY)
 {
     uint32_t startPointer = nnzBlocksPassed * blockSizeY;
     uint32_t endPointer   = startPointer + blockSizeY;
@@ -313,7 +268,7 @@ void getBlock(const BSXNoPad& bcsx, CSX& block, uint32_t nnzBlocksPassed, uint32
 /**
  * Append a CSX format to BSX
  */
-void appendResult(BSXNoPad& result, const CSX& csrResultBlock, uint32_t blockSizeY)
+void appendResult(BSX& result, const CSX& csrResultBlock, uint32_t blockSizeY)
 {
     uint32_t offset = result.pointer[result.pointer.size() - 1];
 
@@ -327,8 +282,8 @@ void appendResult(BSXNoPad& result, const CSX& csrResultBlock, uint32_t blockSiz
 /**
  * Take the blocks of a row-blocked and a column-blocked and perform the multiplication
  */
-CSX subBlockMul(const BSXNoPad& bcsrA,
-                const BSXNoPad& bcscB,
+CSX subBlockMul(const BSX& bcsrA,
+                const BSX& bcscB,
                 CSX& csrMask,
                 uint32_t blockSizeY,
                 uint32_t blockSizeX,

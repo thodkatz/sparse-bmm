@@ -23,6 +23,12 @@ class Timer {
         duration<double> tspan = duration_cast<duration<double>>(toc-tic);
         std::cout << "\n" << text << tspan.count() << " (s) \n" << std::endl;
     }
+
+    double elapsed() {
+        auto toc = steady_clock::now();
+        duration<double> tspan = duration_cast<duration<double>>(toc-tic);
+        return tspan.count();
+    }
 };
 
 /**
@@ -47,11 +53,13 @@ bool hasCommon(InputIterator1 first1, InputIterator1 last1, InputIterator2 first
 /* ------------------- Print utilities ------------------ */
 void printVector(const std::vector<uint32_t>& arr, std::string formatter);
 
-void printBSX(const BSXNoPad& bcsx);
+void printBSX(const BSX& bcsx);
 
 void printCSX(const CSX& csx);
 
 void printCoo(std::vector<uint32_t>& rows, std::vector<uint32_t>& cols);
+
+void printMatrixInfo(const MatrixInfo& arr);
 
 enum class sparseType { CSR, CSC };
 void toDense(CSX csx, uint32_t rows, uint32_t cols, sparseType type, uint32_t pointerOffset, uint32_t indicesOffset);

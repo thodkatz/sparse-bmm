@@ -13,6 +13,9 @@ serial: $(SRC)
 openmp: $(SRC)
 	$(CXX) $(CXXFLAGS) -fopenmp -DOPENMP $^ -I$(INC)  -o bin/$@
 
+openmpi: $(SRC)
+	$(CCMPI) $(CXXFLAGS) -DOPENMPI $^ -I$(INC) -o bin/$@ 
+
 hybrid: $(SRC)
 	$(CCMPI) $(CXXFLAGS) -fopenmp -DHYBRID $^ -I$(INC) -o bin/$@ 
 
