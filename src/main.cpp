@@ -18,6 +18,12 @@
 #include <mpi.h>
 #endif
 
+#ifndef HYBRID
+#ifdef OPENMP
+#define SERIAL
+#endif
+#endif
+
 int main(int argc, char* argv[])
 {
 #ifdef OPENMPI
@@ -151,12 +157,21 @@ int main(int argc, char* argv[])
         nnzRetOffset.resize(numtasks);
     }
 
+    // start tracking time
+    Timer time("Master BMM total\n");
+
     /* ---------------- Per Process block-bmm --------------- */
     if (rank > 0) {
         BSX bcsrA, bcscB, bcsrF;
 
-        A.blockSizeY = (uint32_t)(A.nRow / 2); // the slices are mapped to the potential threads that can be used for multithreading
-        A.blockSizeX = (uint32_t)(A.nCol / 1); // small block size of course reduce the block overhead and have better results
+#ifdef HYBRID
+        // for the hybrid mode we pick 49x1 blockSize, because the maximum pair of tasks will be 7 (processors) x 7 (threads per processor)
+        A.blockSizeY = (uint32_t)(A.nRow / 49); // the slices are mapped to the potential threads that can be used for multithreading
+        A.blockSizeX = (uint32_t)(A.nCol / 1);  // small block size of course reduce the block overhead and have better results
+#else
+        A.blockSizeY = (uint32_t)(A.nRow / 20); // the slices are mapped to the potential threads that can be used for multithreading
+        A.blockSizeX = (uint32_t)(A.nCol / 20); // small block size of course reduce the block overhead and have better results
+#endif
         B.blockSizeX = A.blockSizeX;
         B.blockSizeY = A.blockSizeY;
         F.blockSizeX = B.blockSizeY;
@@ -190,8 +205,28 @@ int main(int argc, char* argv[])
         }
     }
 
+    // is it heavy?
+    MPI_Barrier(MPI_COMM_WORLD);
+
+    // log time
+    if (rank == 0) {
+        std::ofstream logFile;
+        logFile.open("log.csv", std::ios_base::app);
+        std::string type;
+#ifdef HYBRID
+        type = "hybrid";
+#else
+        type         = "openmpi";
+#endif
+        logFile << numWorkers << "," << type << "," << argv[1] << "," << time.elapsed() << "\n";
+        logFile.close();
+    }
+
     /* ------------------------- Gathering from workers and unifying result------------------------- */
-    MPI_Gather(&C.nnz, 1, MPI_UINT32_T, &nnzRetSize.front(), 1, MPI_UINT32_T, 0, MPI_COMM_WORLD);
+    {
+        Timer time("Gathering nnz, rank: " + std::to_string(rank) + "\n");
+        MPI_Gather(&C.nnz, 1, MPI_UINT32_T, &nnzRetSize.front(), 1, MPI_UINT32_T, 0, MPI_COMM_WORLD);
+    }
 
     CSX result;
     if (rank == 0) {
@@ -226,13 +261,12 @@ int main(int argc, char* argv[])
     readInput(argv, A, B, F, csrA, cscB, csrF);
 
     /* --------------------------- Masked CSR-CSC BMM --------------------------- */
-    CSX csrCmask;
-    {
-        Timer time("Time masked serial no blocking SpGEMM: \n");
-        csrCmask = bmm(csrA, cscB, csrF);
-    }
-    std::cout << "C.nnz: " << csrCmask.indices.size() << std::endl;
-
+    // CSX csrCmask;
+    // {
+    //     Timer time("Time masked serial no blocking SpGEMM: \n");
+    //     csrCmask = bmm(csrA, cscB, csrF);
+    // }
+    // std::cout << "C.nnz: " << csrCmask.indices.size() << std::endl;
 
     /* -------------------------------- Blocking -------------------------------- */
     // blockSizeX ~= blockSizeY is supported
@@ -271,6 +305,21 @@ int main(int argc, char* argv[])
     {
         Timer time("Time BLOCK-BMM\n");
         ret = bmmBlock(A, bcsrA, bcscB, bcsrF);
+
+        // log time
+        std::ofstream bmmFile;
+        bmmFile.open("log.csv", std::ios_base::app);
+        std::string type;
+        uint32_t numOfThreads;
+#ifdef OPENMP
+        type         = "openmp";
+        numOfThreads = std::stoi(std::getenv("OMP_NUM_THREADS"));
+#else
+        type         = "serial";
+        numOfThreads = 1;
+#endif
+        bmmFile << numOfThreads << "," << type << "," << argv[1] << "," << time.elapsed() << "\n";
+        bmmFile.close();
     }
 
     MatrixInfo C;
@@ -281,14 +330,13 @@ int main(int argc, char* argv[])
     {
         Timer time("Time BLOCK-BMM result convert BSX->CSX\n");
         bcsr2csr(C, ret, csrRet);
-
     }
 
-    std::cout << "\nBlock BMM validation with non block BMM\n";
-    isEqualCSX(csrCmask, csrRet);
+    // std::cout << "\nBlock BMM validation with non block BMM\n";
+    // isEqualCSX(csrCmask, csrRet);
 
     /* ------------ Export results for validation with python script ------------ */
-    csxWriteFile(csrCmask, "test/csrMul.txt");
+    csxWriteFile(csrRet, "test/csrMul.txt");
 
 #endif // SERIAL
     return 0;
