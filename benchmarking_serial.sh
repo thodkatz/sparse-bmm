@@ -1,5 +1,8 @@
 #!/bin/bash
 
+matrices=("n1e6_d2.mtx")
+path="matrices/"
+
 # serial
 echo "SERIAL"
 for i in ${matrices[@]}; do

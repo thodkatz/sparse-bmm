@@ -30,7 +30,6 @@ int main(int argc, char* argv[])
     int numtasks;
     MPI_Init(&argc, &argv);
     MPI_Comm_size(MPI_COMM_WORLD, &numtasks);
-    std::cout << "Number of processors: " << numtasks << std::endl;
     int numWorkers = numtasks - 1;
     MPI_Status status;
 
@@ -50,6 +49,8 @@ int main(int argc, char* argv[])
 #ifdef OPENMPI
     int rank;
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    if (rank == 0)
+        std::cout << "Number of processors: " << numtasks << std::endl;
     MatrixInfo A, B, F, C;
     CSX csrA, cscB, csrF;
     CSX csrAmaster, csrFmaster;
@@ -158,7 +159,7 @@ int main(int argc, char* argv[])
     }
 
     // start tracking time
-    Timer time("Master BMM total\n");
+    Timer time("Master BMM total, rank: " + std::to_string(rank) + "\n");
 
     /* ---------------- Per Process block-bmm --------------- */
     if (rank > 0) {
@@ -166,11 +167,15 @@ int main(int argc, char* argv[])
 
 #ifdef HYBRID
         // for the hybrid mode we pick 49x1 blockSize, because the maximum pair of tasks will be 7 (processors) x 7 (threads per processor)
-        A.blockSizeY = (uint32_t)(A.nRow / 49); // the slices are mapped to the potential threads that can be used for multithreading
-        A.blockSizeX = (uint32_t)(A.nCol / 1);  // small block size of course reduce the block overhead and have better results
+        uint32_t numBlockGoal    = 49;
+        uint32_t numBlockPerProc = numBlockGoal / numWorkers;
+        A.blockSizeY             = (uint32_t)(A.nRow / numBlockPerProc); // the slices are mapped to the potential threads that can be used for multithreading
+        A.blockSizeX             = (uint32_t)(A.nCol / 1);               // small block size of course reduce the block overhead and have better results
 #else
-        A.blockSizeY = (uint32_t)(A.nRow / 20); // the slices are mapped to the potential threads that can be used for multithreading
-        A.blockSizeX = (uint32_t)(A.nCol / 20); // small block size of course reduce the block overhead and have better results
+        uint32_t numBlockGoal    = 20;
+        uint32_t numBlockPerProc = numBlockGoal / numWorkers;
+        A.blockSizeY             = (uint32_t)(A.nRow / numBlockPerProc);
+        A.blockSizeX             = (uint32_t)(A.nCol / 20);
 #endif
         B.blockSizeX = A.blockSizeX;
         B.blockSizeY = A.blockSizeY;
@@ -205,8 +210,11 @@ int main(int argc, char* argv[])
         }
     }
 
-    // is it heavy?
-    MPI_Barrier(MPI_COMM_WORLD);
+    /* ------------------------- Gathering from workers and unifying result------------------------- */
+    {
+        Timer time("Gathering nnz, rank: " + std::to_string(rank) + "\n");
+        MPI_Gather(&C.nnz, 1, MPI_UINT32_T, &nnzRetSize.front(), 1, MPI_UINT32_T, 0, MPI_COMM_WORLD);
+    }
 
     // log time
     if (rank == 0) {
@@ -216,16 +224,10 @@ int main(int argc, char* argv[])
 #ifdef HYBRID
         type = "hybrid";
 #else
-        type         = "openmpi";
+        type                     = "openmpi";
 #endif
         logFile << numWorkers << "," << type << "," << argv[1] << "," << time.elapsed() << "\n";
         logFile.close();
-    }
-
-    /* ------------------------- Gathering from workers and unifying result------------------------- */
-    {
-        Timer time("Gathering nnz, rank: " + std::to_string(rank) + "\n");
-        MPI_Gather(&C.nnz, 1, MPI_UINT32_T, &nnzRetSize.front(), 1, MPI_UINT32_T, 0, MPI_COMM_WORLD);
     }
 
     CSX result;
@@ -315,8 +317,8 @@ int main(int argc, char* argv[])
         type         = "openmp";
         numOfThreads = std::stoi(std::getenv("OMP_NUM_THREADS"));
 #else
-        type         = "serial";
-        numOfThreads = 1;
+        type                     = "serial";
+        numOfThreads             = 1;
 #endif
         bmmFile << numOfThreads << "," << type << "," << argv[1] << "," << time.elapsed() << "\n";
         bmmFile.close();

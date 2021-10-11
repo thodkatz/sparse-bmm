@@ -40,7 +40,7 @@ for j in ${matrices[@]}; do
     A=$path"A_"$j
     B=$path"B_"$j
     F=$path"F_"$j
-    for task in 1 3 5 7; do
+    for task in 1 2 4 6; do
         echo $task
         export OMP_NUM_THREADS=$task-1
         mpirun --oversubscribe -n $(($task+1)) ./bin/openmpi $A $B $F
