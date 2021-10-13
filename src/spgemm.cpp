@@ -5,6 +5,10 @@
 #include "sparsetools.hpp"
 #include "utils.hpp"
 
+#ifdef HYBRID
+#define OPENMP
+#endif
+
 #ifdef OPENMP
 #include <cstdlib>
 #include <unistd.h>
@@ -140,6 +144,7 @@ BSX bmmBlock(const MatrixInfo& A, const BSX& bcsrA, const BSX& bcscB, const BSX&
         exit(-1);
     }
     uint32_t numOfThreads = std::stoi(std::getenv("OMP_NUM_THREADS"));
+    std::cout << "Number of threads: " << numOfThreads << std::endl;
 
     std::vector<BSX> results(numOfThreads);
     for_each(results.begin(), results.end(), [](BSX& i) { i.pointer.push_back(0); });

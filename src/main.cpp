@@ -11,7 +11,6 @@
 
 #ifdef HYBRID
 #define OPENMPI
-#define OPENMP
 #endif
 
 #ifdef OPENMPI
@@ -167,10 +166,10 @@ int main(int argc, char* argv[])
 
 #ifdef HYBRID
         // for the hybrid mode we pick 49x1 blockSize, because the maximum pair of tasks will be 7 (processors) x 7 (threads per processor)
-        uint32_t numBlockGoal    = 49;
+        uint32_t numBlockGoal    = 20;
         uint32_t numBlockPerProc = numBlockGoal / numWorkers;
         A.blockSizeY             = (uint32_t)(A.nRow / numBlockPerProc); // the slices are mapped to the potential threads that can be used for multithreading
-        A.blockSizeX             = (uint32_t)(A.nCol / 1);               // small block size of course reduce the block overhead and have better results
+        A.blockSizeX             = (uint32_t)(A.nCol / 20);               // small block size of course reduce the block overhead and have better results
 #else
         uint32_t numBlockGoal    = 20;
         uint32_t numBlockPerProc = numBlockGoal / numWorkers;
@@ -263,17 +262,17 @@ int main(int argc, char* argv[])
     readInput(argv, A, B, F, csrA, cscB, csrF);
 
     /* --------------------------- Masked CSR-CSC BMM --------------------------- */
-    // CSX csrCmask;
-    // {
-    //     Timer time("Time masked serial no blocking SpGEMM: \n");
-    //     csrCmask = bmm(csrA, cscB, csrF);
-    // }
-    // std::cout << "C.nnz: " << csrCmask.indices.size() << std::endl;
+    CSX csrCmask;
+    {
+        Timer time("Time masked serial no blocking SpGEMM: \n");
+        csrCmask = bmm(csrA, cscB, csrF);
+    }
+    //std::cout << "C.nnz: " << csrCmask.indices.size() << std::endl;
 
     /* -------------------------------- Blocking -------------------------------- */
     // blockSizeX ~= blockSizeY is supported
-    A.blockSizeX = A.nRow / 20;
-    A.blockSizeY = A.nCol / 20;
+    A.blockSizeX = A.nRow / 60;
+    A.blockSizeY = A.nCol / 60;
     B.blockSizeX = A.blockSizeX;
     B.blockSizeY = A.blockSizeY;
     F.blockSizeX = B.blockSizeY;
@@ -291,16 +290,6 @@ int main(int argc, char* argv[])
               << "B: blockX: " << B.blockSizeX << ", numBlocksX: " << B.numBlockX << ", blockY: " << B.blockSizeY << ", numBlocksY: " << B.numBlockY << std::endl
               << "F: blockX: " << F.blockSizeX << ", numBlocksX: " << F.numBlockX << ", blockY: " << F.blockSizeY << ", numBlocksY: " << F.numBlockY << std::endl;
 
-    CSX csrArevert;
-    CSX cscBrevert;
-    CSX csrFrevert;
-    {
-        Timer time("Time Revert Blocking\n");
-        bcsr2csr(A, bcsrA, csrArevert);
-        bcsc2csc(B, bcscB, cscBrevert);
-        bcsr2csr(F, bcsrF, csrFrevert);
-    }
-
     std::cout << "\nBLOCK BMM" << std::endl;
 
     BSX ret;
@@ -317,7 +306,7 @@ int main(int argc, char* argv[])
         type         = "openmp";
         numOfThreads = std::stoi(std::getenv("OMP_NUM_THREADS"));
 #else
-        type                     = "serial";
+        type                     = "serial60";
         numOfThreads             = 1;
 #endif
         bmmFile << numOfThreads << "," << type << "," << argv[1] << "," << time.elapsed() << "\n";
