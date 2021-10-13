@@ -5,6 +5,10 @@
 #include "sparsetools.hpp"
 #include "utils.hpp"
 
+#ifdef HYBRID
+#define OPENMP
+#endif
+
 #ifdef OPENMP
 #include <cstdlib>
 #include <unistd.h>
