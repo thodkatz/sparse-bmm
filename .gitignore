@@ -6,3 +6,4 @@ report/assets/
 report/Makefile
 report/*.tex
 report/*.bib
+slurm/

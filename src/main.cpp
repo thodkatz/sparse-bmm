@@ -166,7 +166,7 @@ int main(int argc, char* argv[])
 
 #ifdef HYBRID
         // for the hybrid mode we pick 49x1 blockSize, because the maximum pair of tasks will be 7 (processors) x 7 (threads per processor)
-        uint32_t numBlockGoal    = 36;
+        uint32_t numBlockGoal    = 64;
         uint32_t numBlockPerProc = numBlockGoal / numWorkers;
         A.blockSizeY             = (uint32_t)(A.nRow / numBlockPerProc); // the slices are mapped to the potential threads that can be used for multithreading
         A.blockSizeX             = (uint32_t)(A.nCol / 1);               // small block size of course reduce the block overhead and have better results
@@ -267,15 +267,12 @@ int main(int argc, char* argv[])
         Timer time("Time masked serial no blocking SpGEMM: \n");
         csrCmask = bmm(csrA, cscB, csrF);
     }
-    // std::cout << "C.nnz: " << csrCmask.indices.size() << std::endl;
+    //std::cout << "C.nnz: " << csrCmask.indices.size() << std::endl;
 
     /* -------------------------------- Blocking -------------------------------- */
     // blockSizeX ~= blockSizeY is supported
-    //A.blockSizeX = A.nRow / 20;
-    //A.blockSizeY = A.nCol / 20;
-
-    A.blockSizeX = A.nRow / 2;
-    A.blockSizeY = A.nCol / 2;
+    A.blockSizeX = A.nRow / 20;
+    A.blockSizeY = A.nCol / 20;
     B.blockSizeX = A.blockSizeX;
     B.blockSizeY = A.blockSizeY;
     F.blockSizeX = B.blockSizeY;
@@ -312,7 +309,7 @@ int main(int argc, char* argv[])
         type         = "openmp";
         numOfThreads = std::stoi(std::getenv("OMP_NUM_THREADS"));
 #else
-        type                     = "serial";
+        type                     = "serial60";
         numOfThreads             = 1;
 #endif
         bmmFile << numOfThreads << "," << type << "," << argv[1] << "," << time.elapsed() << "\n";
